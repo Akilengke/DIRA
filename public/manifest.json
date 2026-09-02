@@ -1,0 +1,36 @@
+{
+  "name": "DIRA - Donkey Incident Reporting APP (Kaa Rada!)",
+  "short_name": "DIRA",
+  "description": "DIRA (Donkey Incident Reporting APP) - Kaa Rada! Community reporting and emergency response app by Caritas Kitui.",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#09090B",
+  "theme_color": "#991B1B",
+  "categories": ["utilities", "lifestyle", "social"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Report Incident",
+      "short_name": "Report",
+      "description": "Report a donkey-related theft, bush slaughter, or abuse case",
+      "url": "/?action=report",
+      "icons": [{ "src": "/icon.svg", "sizes": "192x192" }]
+    },
+    {
+      "name": "Emergency Hotline",
+      "short_name": "Hotline",
+      "description": "Call 0800000890 toll-free",
+      "url": "tel:0800000890",
+      "icons": [{ "src": "/icon.svg", "sizes": "192x192" }]
+    }
+  ]
+}
