@@ -1,5 +1,5 @@
 import React from 'react';
-import { PhoneCall, Shield, User, LogIn, LogOut } from 'lucide-react';
+import { PhoneCall, Shield, User, LogIn, LogOut, Cloud } from 'lucide-react';
 import { UserProfile } from '../types';
 import { CaritasLogo } from './CaritasLogo';
 import { EMERGENCY_HOTLINE, HOTLINE_DISPLAY } from '../data/mockData';
@@ -8,6 +8,7 @@ interface HeaderBarProps {
   currentUser: UserProfile | null;
   onOpenAuthModal: () => void;
   onOpenHotlineModal: () => void;
+  onOpenDriveModal?: () => void;
   onLogout?: () => void;
   pendingCasesCount?: number;
 }
@@ -16,6 +17,7 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   currentUser,
   onOpenAuthModal,
   onOpenHotlineModal,
+  onOpenDriveModal,
   onLogout,
   pendingCasesCount = 0,
 }) => {
@@ -47,6 +49,26 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
 
         {/* Right Action Buttons */}
         <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Google Drive Evidence Vault Button */}
+          {onOpenDriveModal && (
+            <button
+              id="header-google-drive-btn"
+              onClick={onOpenDriveModal}
+              className="bg-zinc-100 hover:bg-zinc-200 text-zinc-800 p-2 sm:px-2.5 sm:py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border border-zinc-200 shadow-2xs"
+              title="Google Drive Evidence Vault & Cloud Backup"
+            >
+              <svg viewBox="0 0 87.3 78" className="w-4 h-4 shrink-0">
+                <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+                <path d="M43.65 25 29.9 1.2c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44A8.9 8.9 0 0 0 0 53h27.5z" fill="#00ac47"/>
+                <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H59.8l5.85 10.15z" fill="#ea4335"/>
+                <path d="M43.65 25 57.4 1.2C56.05.4 54.5 0 52.95 0H34.35c-1.55 0-3.1.4-4.45 1.2z" fill="#00832d"/>
+                <path d="M59.8 53H87.3c0-1.55-.4-3.1-1.2-4.5l-13.75-23.8-13.75 23.8z" fill="#2684fc"/>
+                <path d="m73.55 76.8-13.75-23.8H27.5L41.25 76.8c1.35.8 2.9 1.2 4.45 1.2h23.4c1.55 0 3.1-.4 4.45-1.2z" fill="#ffba00"/>
+              </svg>
+              <span className="hidden md:inline text-[11px]">Drive</span>
+            </button>
+          )}
+
           {/* Emergency Hotline 0800000890 Fast Action */}
           <a
             id="header-tollfree-dial-btn"

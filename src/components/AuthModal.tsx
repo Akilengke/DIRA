@@ -15,6 +15,8 @@ import {
   generateOtpForPhone 
 } from '../data/mockData';
 import { CaritasLogo } from './CaritasLogo';
+import { GoogleSignInButton } from './GoogleSignInButton';
+import { googleSignIn } from '../services/firebaseAuth';
 
 const SAVED_PROFILES_KEY = 'kaa_rada_saved_profiles_v2';
 
@@ -255,6 +257,47 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     saveProfileToList(newProfile);
     onSelectUser(newProfile);
     onClose();
+  };
+
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+
+  const handleGoogleLogin = async () => {
+    setIsGoogleLoading(true);
+    setLoginError(null);
+    try {
+      const { user } = await googleSignIn();
+      const userEmail = user.email || '';
+      const userName = user.displayName || 'Google User';
+
+      const matched = savedProfiles.find((p) => 
+        (userEmail && p.email === userEmail) || 
+        (p.name && p.name.toLowerCase() === userName.toLowerCase())
+      );
+
+      if (matched) {
+        onSelectUser(matched);
+      } else {
+        const newGoogleProfile: UserProfile = {
+          id: `usr_g_${user.uid.slice(0, 8)}`,
+          name: userName,
+          phone: user.phoneNumber || '0700 000 000',
+          email: userEmail,
+          subCounty: 'Kitui Central',
+          village: 'Kitui Central Desk',
+          role: 'primary_user',
+          designation: 'COMMUNITY MEMBER',
+          organization: 'Caritas Kitui Partner Network',
+        };
+        saveProfileToList(newGoogleProfile);
+        onSelectUser(newGoogleProfile);
+      }
+      onClose();
+    } catch (err: any) {
+      console.error('Google login error:', err);
+      setLoginError(err?.message || 'Google Sign-In failed.');
+    } finally {
+      setIsGoogleLoading(false);
+    }
   };
 
   const handleLogoutAction = () => {
@@ -598,6 +641,24 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </div>
                 </form>
               )}
+
+              {/* Google Sign In & Drive Connection */}
+              <div className="pt-2 border-t border-zinc-200 space-y-2">
+                <div className="relative flex items-center justify-center my-1">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-zinc-200" />
+                  </div>
+                  <span className="relative px-2 text-[10px] uppercase font-bold text-zinc-400 bg-white">
+                    Or continue with Google
+                  </span>
+                </div>
+
+                <GoogleSignInButton
+                  onClick={handleGoogleLogin}
+                  loading={isGoogleLoading}
+                  label="Sign in with Google"
+                />
+              </div>
             </div>
           )}
 

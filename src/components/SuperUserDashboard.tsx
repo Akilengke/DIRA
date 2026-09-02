@@ -8,6 +8,8 @@ import {
 } from 'lucide-react';
 import { DonkeyCase, CaseStatus, UserProfile, ActionLog, CaseResolution } from '../types';
 import { CATEGORY_INFO, KITUI_SUB_COUNTIES, INITIAL_OFFICERS, INITIAL_PRIMARY_USERS, ALL_PRELOADED_USERS } from '../data/mockData';
+import { exportCaseDossierToDrive } from '../services/googleDriveService';
+import { hasValidGoogleToken, googleSignIn } from '../services/firebaseAuth';
 
 interface SuperUserDashboardProps {
   cases: DonkeyCase[];
@@ -19,6 +21,7 @@ interface SuperUserDashboardProps {
   onOpenReportModal: () => void;
   onOpenAuthModal: () => void;
   onOpenChangePasswordModal?: () => void;
+  onOpenDriveModal?: () => void;
 }
 
 export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
@@ -31,6 +34,7 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
   onOpenReportModal,
   onOpenAuthModal,
   onOpenChangePasswordModal,
+  onOpenDriveModal,
 }) => {
   const isSuperUser = currentUser?.role === 'super_user';
 
@@ -58,6 +62,31 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
   const [isAddingLog, setIsAddingLog] = useState(false);
   const [newLogNote, setNewLogNote] = useState('');
   const [newLogOfficer, setNewLogOfficer] = useState(currentUser?.name || 'Caritas Response Desk');
+
+  // Google Drive export feedback state
+  const [isExportingDrive, setIsExportingDrive] = useState(false);
+  const [driveExportSuccess, setDriveExportSuccess] = useState<string | null>(null);
+  const [driveExportError, setDriveExportError] = useState<string | null>(null);
+
+  const handleExportSelectedCaseToDrive = async (c: DonkeyCase) => {
+    setIsExportingDrive(true);
+    setDriveExportSuccess(null);
+    setDriveExportError(null);
+    try {
+      if (!hasValidGoogleToken()) {
+        await googleSignIn();
+      }
+      const exportedFile = await exportCaseDossierToDrive(c);
+      setDriveExportSuccess(`Exported dossier "${c.id}" to Google Drive Evidence Vault!`);
+      setTimeout(() => setDriveExportSuccess(null), 5000);
+    } catch (err: any) {
+      console.error('Failed to export to Google Drive:', err);
+      setDriveExportError(err?.message || 'Failed to export case to Google Drive.');
+      setTimeout(() => setDriveExportError(null), 5000);
+    } finally {
+      setIsExportingDrive(false);
+    }
+  };
 
   // Filter reported cases
   const filteredCases = cases.filter((c) => {
@@ -252,6 +281,25 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
           </div>
 
           <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+            {onOpenDriveModal && (
+              <button
+                id="btn-officer-google-drive"
+                onClick={onOpenDriveModal}
+                className="bg-zinc-900 hover:bg-zinc-800 text-zinc-200 hover:text-white font-bold text-xs px-3 py-2 rounded-xl shadow-xs active:scale-95 transition-all flex items-center gap-1.5 border border-zinc-700"
+                title="Open Google Drive Cloud Evidence Vault"
+              >
+                <svg viewBox="0 0 87.3 78" className="w-3.5 h-3.5 shrink-0">
+                  <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+                  <path d="M43.65 25 29.9 1.2c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44A8.9 8.9 0 0 0 0 53h27.5z" fill="#00ac47"/>
+                  <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H59.8l5.85 10.15z" fill="#ea4335"/>
+                  <path d="M43.65 25 57.4 1.2C56.05.4 54.5 0 52.95 0H34.35c-1.55 0-3.1.4-4.45 1.2z" fill="#00832d"/>
+                  <path d="M59.8 53H87.3c0-1.55-.4-3.1-1.2-4.5l-13.75-23.8-13.75 23.8z" fill="#2684fc"/>
+                  <path d="m73.55 76.8-13.75-23.8H27.5L41.25 76.8c1.35.8 2.9 1.2 4.45 1.2h23.4c1.55 0 3.1-.4 4.45-1.2z" fill="#ffba00"/>
+                </svg>
+                <span>Drive Vault</span>
+              </button>
+            )}
+
             {onOpenChangePasswordModal && (
               <button
                 id="btn-change-officer-password"
@@ -446,8 +494,26 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
                     </h3>
                   </div>
 
-                  {/* Super User 2 Primary Action Buttons */}
-                  <div className="flex items-center gap-2 shrink-0">
+                  {/* Super User Action Buttons & Drive Export */}
+                  <div className="flex items-center gap-2 shrink-0 flex-wrap">
+                    <button
+                      id="export-case-drive-btn"
+                      onClick={() => handleExportSelectedCaseToDrive(selectedCase)}
+                      disabled={isExportingDrive}
+                      className="bg-zinc-100 hover:bg-zinc-200 text-zinc-900 border border-zinc-300 font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50"
+                      title="Export Case Dossier Document to Google Drive Evidence Vault"
+                    >
+                      <svg viewBox="0 0 87.3 78" className="w-3.5 h-3.5 shrink-0">
+                        <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+                        <path d="M43.65 25 29.9 1.2c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44A8.9 8.9 0 0 0 0 53h27.5z" fill="#00ac47"/>
+                        <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H59.8l5.85 10.15z" fill="#ea4335"/>
+                        <path d="M43.65 25 57.4 1.2C56.05.4 54.5 0 52.95 0H34.35c-1.55 0-3.1.4-4.45 1.2z" fill="#00832d"/>
+                        <path d="M59.8 53H87.3c0-1.55-.4-3.1-1.2-4.5l-13.75-23.8-13.75 23.8z" fill="#2684fc"/>
+                        <path d="m73.55 76.8-13.75-23.8H27.5L41.25 76.8c1.35.8 2.9 1.2 4.45 1.2h23.4c1.55 0 3.1-.4 4.45-1.2z" fill="#ffba00"/>
+                      </svg>
+                      <span>{isExportingDrive ? 'Exporting...' : 'Save to Drive'}</span>
+                    </button>
+
                     {selectedCase.status !== 'resolved' && (
                       <>
                         {/* Option 1: Escalate to another user / officer */}
@@ -457,7 +523,7 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
                           className="bg-zinc-100 hover:bg-zinc-200 text-zinc-900 border border-zinc-300 font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 transition-all active:scale-95"
                         >
                           <Send className="w-3.5 h-3.5 text-zinc-700" />
-                          <span>Escalate to Officer</span>
+                          <span>Escalate</span>
                         </button>
 
                         {/* Option 2: Act Themselves & Label as Resolved */}
@@ -473,6 +539,20 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
                     )}
                   </div>
                 </div>
+
+                {/* Google Drive Status Toast in Case Detail */}
+                {driveExportSuccess && (
+                  <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 p-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 animate-in fade-in">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>{driveExportSuccess}</span>
+                  </div>
+                )}
+                {driveExportError && (
+                  <div className="bg-red-50 border border-red-200 text-red-800 p-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 animate-in fade-in">
+                    <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                    <span>{driveExportError}</span>
+                  </div>
+                )}
 
                 {/* Case Description & Details */}
                 <div className="space-y-3">

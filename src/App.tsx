@@ -13,6 +13,7 @@ import { EmergencyHotlineModal } from './components/EmergencyHotlineModal';
 import { AuthModal } from './components/AuthModal';
 import { AuthScreen } from './components/AuthScreen';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
+import { GoogleDriveVaultModal } from './components/GoogleDriveVaultModal';
 
 const STORAGE_KEY_CASES = 'kaa_rada_cases_v2';
 const STORAGE_KEY_USER = 'kaa_rada_current_user_v2';
@@ -54,6 +55,7 @@ export default function App() {
   const [isHotlineModalOpen, setIsHotlineModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false);
+  const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
 
   // Sync cases to localStorage
   useEffect(() => {
@@ -340,6 +342,7 @@ export default function App() {
         currentUser={currentUser}
         onOpenAuthModal={() => setIsAuthModalOpen(true)}
         onOpenHotlineModal={() => setIsHotlineModalOpen(true)}
+        onOpenDriveModal={() => setIsDriveModalOpen(true)}
         onLogout={currentUser ? handleLogout : undefined}
         pendingCasesCount={pendingCount}
       />
@@ -363,6 +366,7 @@ export default function App() {
             onOpenReportModal={() => setIsReportModalOpen(true)}
             onRateCase={handleRateCase}
             onOpenAuthModal={() => setIsAuthModalOpen(true)}
+            onOpenDriveModal={() => setIsDriveModalOpen(true)}
           />
         )}
 
@@ -385,6 +389,8 @@ export default function App() {
             onResolveCase={handleResolveCase}
             onOpenReportModal={() => setIsReportModalOpen(true)}
             onOpenAuthModal={() => setIsAuthModalOpen(true)}
+            onOpenChangePasswordModal={() => setIsChangePasswordModalOpen(true)}
+            onOpenDriveModal={() => setIsDriveModalOpen(true)}
           />
         )}
 
@@ -450,6 +456,21 @@ export default function App() {
         currentUser={currentUser}
         onSelectUser={handleSelectUser}
         onLogout={handleLogout}
+        onOpenChangePasswordModal={() => setIsChangePasswordModalOpen(true)}
+      />
+
+      <ChangePasswordModal
+        isOpen={isChangePasswordModalOpen}
+        onClose={() => setIsChangePasswordModalOpen(false)}
+        currentUser={currentUser}
+        onUpdatePassword={handleUpdatePassword}
+      />
+
+      <GoogleDriveVaultModal
+        isOpen={isDriveModalOpen}
+        onClose={() => setIsDriveModalOpen(false)}
+        cases={cases}
+        currentUser={currentUser}
       />
     </div>
   );

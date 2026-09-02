@@ -1,0 +1,13 @@
+<resources>
+    <style name="Theme.DIRA" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Primary Brand Colors matching Caritas Kitui DIRA -->
+        <item name="colorPrimary">#991B1B</item>
+        <item name="colorPrimaryVariant">#7F1D1D</item>
+        <item name="colorOnPrimary">#FFFFFF</item>
+        <item name="colorSecondary">#DC2626</item>
+        <item name="colorOnSecondary">#FFFFFF</item>
+        <item name="android:statusBarColor">#991B1B</item>
+        <item name="android:navigationBarColor">#09090B</item>
+        <item name="android:windowBackground">#09090B</item>
+    </style>
+</resources>

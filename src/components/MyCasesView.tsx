@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import { DonkeyCase, UserProfile, CaseStatus } from '../types';
 import { CATEGORY_INFO } from '../data/mockData';
+import { exportCaseDossierToDrive } from '../services/googleDriveService';
+import { hasValidGoogleToken, googleSignIn } from '../services/firebaseAuth';
 
 interface MyCasesViewProps {
   cases: DonkeyCase[];
@@ -14,6 +16,7 @@ interface MyCasesViewProps {
   onOpenReportModal: () => void;
   onRateCase?: (caseId: string, rating: number, feedback?: string) => void;
   onOpenAuthModal?: () => void;
+  onOpenDriveModal?: () => void;
 }
 
 interface StepDefinition {
@@ -56,6 +59,7 @@ export const MyCasesView: React.FC<MyCasesViewProps> = ({
   onOpenReportModal,
   onRateCase,
   onOpenAuthModal,
+  onOpenDriveModal,
 }) => {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [selectedCase, setSelectedCase] = useState<DonkeyCase | null>(null);
@@ -65,6 +69,31 @@ export const MyCasesView: React.FC<MyCasesViewProps> = ({
   const [hoverRating, setHoverRating] = useState<number>(0);
   const [feedbackText, setFeedbackText] = useState<string>('');
   const [ratingSuccessMsg, setRatingSuccessMsg] = useState<string | null>(null);
+
+  // Google Drive export state
+  const [exportingCaseId, setExportingCaseId] = useState<string | null>(null);
+  const [driveSuccessToast, setDriveSuccessToast] = useState<string | null>(null);
+  const [driveErrorToast, setDriveErrorToast] = useState<string | null>(null);
+
+  const handleExportCase = async (c: DonkeyCase) => {
+    setExportingCaseId(c.id);
+    setDriveSuccessToast(null);
+    setDriveErrorToast(null);
+    try {
+      if (!hasValidGoogleToken()) {
+        await googleSignIn();
+      }
+      await exportCaseDossierToDrive(c);
+      setDriveSuccessToast(`Case #${c.trackingCode} saved to your Google Drive Evidence Vault!`);
+      setTimeout(() => setDriveSuccessToast(null), 5000);
+    } catch (err: any) {
+      console.error('Drive export failed:', err);
+      setDriveErrorToast(err?.message || 'Failed to save case to Google Drive.');
+      setTimeout(() => setDriveErrorToast(null), 5000);
+    } finally {
+      setExportingCaseId(null);
+    }
+  };
 
   // Filter cases reported strictly by the logged-in user
   const userCases = cases.filter((c) => {
@@ -181,11 +210,54 @@ export const MyCasesView: React.FC<MyCasesViewProps> = ({
             <User className="w-3.5 h-3.5 text-red-300" />
             <span>Tracking reports filed by: <strong className="text-white">{currentUser.name}</strong> ({currentUser.phone})</span>
           </div>
-          <div className="text-[11px] font-bold bg-black/25 px-2.5 py-0.5 rounded-lg border border-white/10">
-            {userCases.length} {userCases.length === 1 ? 'Report Logged' : 'Reports Logged'}
+          <div className="flex items-center gap-2">
+            {onOpenDriveModal && (
+              <button
+                onClick={onOpenDriveModal}
+                className="text-[11px] font-bold bg-white text-zinc-900 hover:bg-red-50 px-2.5 py-1 rounded-lg border border-white/20 flex items-center gap-1 transition-all shadow-xs"
+              >
+                <svg viewBox="0 0 87.3 78" className="w-3.5 h-3.5 shrink-0">
+                  <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+                  <path d="M43.65 25 29.9 1.2c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44A8.9 8.9 0 0 0 0 53h27.5z" fill="#00ac47"/>
+                  <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H59.8l5.85 10.15z" fill="#ea4335"/>
+                  <path d="M43.65 25 57.4 1.2C56.05.4 54.5 0 52.95 0H34.35c-1.55 0-3.1.4-4.45 1.2z" fill="#00832d"/>
+                  <path d="M59.8 53H87.3c0-1.55-.4-3.1-1.2-4.5l-13.75-23.8-13.75 23.8z" fill="#2684fc"/>
+                  <path d="m73.55 76.8-13.75-23.8H27.5L41.25 76.8c1.35.8 2.9 1.2 4.45 1.2h23.4c1.55 0 3.1-.4 4.45-1.2z" fill="#ffba00"/>
+                </svg>
+                <span>Google Drive Vault</span>
+              </button>
+            )}
+            <div className="text-[11px] font-bold bg-black/25 px-2.5 py-0.5 rounded-lg border border-white/10">
+              {userCases.length} {userCases.length === 1 ? 'Report Logged' : 'Reports Logged'}
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Google Drive Status Toast */}
+      {driveSuccessToast && (
+        <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 p-3 rounded-2xl text-xs font-semibold flex items-center justify-between gap-2 animate-in slide-in-from-top duration-200 shadow-xs">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <span>{driveSuccessToast}</span>
+          </div>
+          {onOpenDriveModal && (
+            <button
+              onClick={onOpenDriveModal}
+              className="text-[11px] underline font-bold text-emerald-800 hover:text-emerald-950 shrink-0"
+            >
+              Open Vault
+            </button>
+          )}
+        </div>
+      )}
+
+      {driveErrorToast && (
+        <div className="bg-red-50 border border-red-300 text-red-900 p-3 rounded-2xl text-xs font-semibold flex items-center gap-2 animate-in slide-in-from-top duration-200 shadow-xs">
+          <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+          <span>{driveErrorToast}</span>
+        </div>
+      )}
 
       {/* 2. Filter Tabs */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs select-none no-scrollbar">
@@ -295,8 +367,25 @@ export const MyCasesView: React.FC<MyCasesViewProps> = ({
                       </h2>
                     </div>
 
-                    {/* Status Badge */}
-                    <div className="shrink-0">
+                    {/* Status Badge & Google Drive Save */}
+                    <div className="shrink-0 flex items-center gap-2 flex-wrap sm:flex-nowrap justify-end">
+                      <button
+                        onClick={() => handleExportCase(c)}
+                        disabled={exportingCaseId === c.id}
+                        className="bg-zinc-50 hover:bg-zinc-100 text-zinc-800 border border-zinc-200 font-bold px-2.5 py-1 rounded-xl text-xs flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50"
+                        title="Save complete case dossier & evidence to Google Drive"
+                      >
+                        <svg viewBox="0 0 87.3 78" className="w-3.5 h-3.5 shrink-0">
+                          <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
+                          <path d="M43.65 25 29.9 1.2c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44A8.9 8.9 0 0 0 0 53h27.5z" fill="#00ac47"/>
+                          <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H59.8l5.85 10.15z" fill="#ea4335"/>
+                          <path d="M43.65 25 57.4 1.2C56.05.4 54.5 0 52.95 0H34.35c-1.55 0-3.1.4-4.45 1.2z" fill="#00832d"/>
+                          <path d="M59.8 53H87.3c0-1.55-.4-3.1-1.2-4.5l-13.75-23.8-13.75 23.8z" fill="#2684fc"/>
+                          <path d="m73.55 76.8-13.75-23.8H27.5L41.25 76.8c1.35.8 2.9 1.2 4.45 1.2h23.4c1.55 0 3.1-.4 4.45-1.2z" fill="#ffba00"/>
+                        </svg>
+                        <span>{exportingCaseId === c.id ? 'Saving...' : 'Drive'}</span>
+                      </button>
+
                       <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${
                         isResolved
                           ? 'bg-emerald-50 text-emerald-800 border-emerald-300'

@@ -1,5 +1,5 @@
 import React from 'react';
-import { PhoneCall, ShieldAlert, HeartHandshake } from 'lucide-react';
+import { PhoneCall, ShieldAlert } from 'lucide-react';
 import { EMERGENCY_HOTLINE, HOTLINE_DISPLAY } from '../data/mockData';
 
 interface TollFreeBannerProps {
@@ -89,17 +89,6 @@ export const TollFreeBanner: React.FC<TollFreeBannerProps> = ({
               <PhoneCall className="w-4 h-4 fill-[#991B1B]" />
               <span>Piga Simu Bure</span>
             </a>
-
-            {onOpenHotlineModal && (
-              <button
-                id="emergency-info-guidelines-btn"
-                onClick={onOpenHotlineModal}
-                className="bg-black/30 hover:bg-black/50 text-white font-semibold px-3 py-2.5 rounded-xl text-xs flex items-center justify-center gap-1.5 backdrop-blur border border-white/20 transition-all"
-              >
-                <HeartHandshake className="w-4 h-4 text-red-200" />
-                <span className="hidden xs:inline">Guidelines</span>
-              </button>
-            )}
           </div>
         </div>
       </div>

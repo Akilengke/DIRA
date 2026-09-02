@@ -15,6 +15,8 @@ import {
   generateOtpForPhone 
 } from '../data/mockData';
 import { CaritasLogo } from './CaritasLogo';
+import { GoogleSignInButton } from './GoogleSignInButton';
+import { googleSignIn } from '../services/firebaseAuth';
 
 const SAVED_PROFILES_KEY = 'kaa_rada_saved_profiles_v2';
 
@@ -275,6 +277,48 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
 
     saveProfileToList(newProfile);
     onLogin(newProfile);
+  };
+
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
+
+  // Sign in using Google (unlocks Google Drive & signs in user)
+  const handleGoogleLogin = async () => {
+    setIsGoogleLoading(true);
+    setAuthError(null);
+    try {
+      const { user } = await googleSignIn();
+      const userEmail = user.email || '';
+      const userName = user.displayName || 'Google User';
+
+      // Match existing profile or create verified profile
+      const matched = savedProfiles.find((p) => 
+        (userEmail && p.email === userEmail) || 
+        (p.name && p.name.toLowerCase() === userName.toLowerCase())
+      );
+
+      if (matched) {
+        onLogin(matched);
+      } else {
+        const newGoogleProfile: UserProfile = {
+          id: `usr_g_${user.uid.slice(0, 8)}`,
+          name: userName,
+          phone: user.phoneNumber || '0700 000 000',
+          email: userEmail,
+          subCounty: 'Kitui Central',
+          village: 'Kitui Central Desk',
+          role: 'primary_user',
+          designation: 'COMMUNITY MEMBER',
+          organization: 'Caritas Kitui Partner Network',
+        };
+        saveProfileToList(newGoogleProfile);
+        onLogin(newGoogleProfile);
+      }
+    } catch (err: any) {
+      console.error('Google Sign In failed:', err);
+      setAuthError(err?.message || 'Google Sign-In failed. Please try again.');
+    } finally {
+      setIsGoogleLoading(false);
+    }
   };
 
   // Filtered Super Users
@@ -632,6 +676,24 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ onLogin }) => {
                   </div>
                 </form>
               )}
+
+              {/* Google Sign In Option for Drive and Direct Login */}
+              <div className="pt-2 border-t border-zinc-800/80 space-y-2">
+                <div className="relative flex items-center justify-center my-1">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-zinc-800" />
+                  </div>
+                  <span className="relative px-2 text-[10px] uppercase font-bold text-zinc-400 bg-zinc-900">
+                    Or continue with Google & Drive
+                  </span>
+                </div>
+
+                <GoogleSignInButton
+                  onClick={handleGoogleLogin}
+                  loading={isGoogleLoading}
+                  label="Sign in with Google"
+                />
+              </div>
 
               {/* Quick links to preloaded official lists */}
               <div className="pt-2 border-t border-zinc-800/80">
