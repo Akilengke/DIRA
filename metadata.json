@@ -1,9 +1,10 @@
 {
   "name": "DIRA",
-  "description": "DIRA (Donkey Incident Reporting APP) - Kaa Rada! Community reporting and emergency response app by Caritas Kitui for tracking donkey theft, trafficking, bush slaughter, and abuse.",
+  "description": "DIRA (Donkey Incident Reporting APP) - Kaa Rada! Community reporting, welfare tracking, and emergency response app for tracking donkey theft, trafficking, bush slaughter, and abuse.",
   "requestFramePermissions": [
     "camera",
-    "geolocation"
+    "geolocation",
+    "microphone"
   ],
   "majorCapabilities": [
     "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"

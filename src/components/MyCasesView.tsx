@@ -1,14 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   FileText, MapPin, Clock, CheckCircle2, AlertTriangle, 
   ShieldAlert, ChevronRight, Plus, Copy, Check, Filter, Search,
   Star, MessageSquare, Shield, CheckCheck, Sparkles, User,
-  Calendar, Phone, Info, Send, CornerDownRight, ThumbsUp, Radio, ArrowRight
+  Calendar, Phone, Info, Send, CornerDownRight, ThumbsUp, Radio, ArrowRight,
+  Activity, Heart, LayoutGrid, List, Eye, ArrowDownUp, Download, Loader2
 } from 'lucide-react';
 import { DonkeyCase, UserProfile, CaseStatus } from '../types';
 import { CATEGORY_INFO } from '../data/mockData';
 import { exportCaseDossierToDrive } from '../services/googleDriveService';
 import { hasValidGoogleToken, googleSignIn } from '../services/firebaseAuth';
+import { CaseDetailsPreviewModal } from './CaseDetailsPreviewModal';
+import { exportSingleCasePDF } from '../services/pdfReportService';
+import { GeneralReportModal } from './GeneralReportModal';
+import { sortCasesLatestFirst, formatReportedDateTime, formatReportedRelative } from '../utils/dateUtils';
 
 interface MyCasesViewProps {
   cases: DonkeyCase[];
@@ -17,41 +22,8 @@ interface MyCasesViewProps {
   onRateCase?: (caseId: string, rating: number, feedback?: string) => void;
   onOpenAuthModal?: () => void;
   onOpenDriveModal?: () => void;
+  onNavigateToTab?: (tab: 'home' | 'my_cases' | 'hotspots' | 'super_portal' | 'helpline') => void;
 }
-
-interface StepDefinition {
-  id: 'reported' | 'under_review' | 'active' | 'resolved';
-  label: string;
-  swahiliLabel: string;
-  description: string;
-}
-
-const PROGRESS_STEPS: StepDefinition[] = [
-  {
-    id: 'reported',
-    label: 'Reported',
-    swahiliLabel: 'Imewasilishwa',
-    description: 'Case recorded with GPS lock & assigned tracking code',
-  },
-  {
-    id: 'under_review',
-    label: 'Under Review',
-    swahiliLabel: 'Inakaguliwa',
-    description: 'Command triage, priority assessment & verification',
-  },
-  {
-    id: 'active',
-    label: 'Active / Action',
-    swahiliLabel: 'Uchunguzi / Hatua',
-    description: 'Field officer dispatched & tactical response active',
-  },
-  {
-    id: 'resolved',
-    label: 'Resolved',
-    swahiliLabel: 'Imetatuliwa',
-    description: 'Donkeys recovered, treated, or case finalized',
-  },
-];
 
 export const MyCasesView: React.FC<MyCasesViewProps> = ({
   cases,
@@ -60,25 +32,41 @@ export const MyCasesView: React.FC<MyCasesViewProps> = ({
   onRateCase,
   onOpenAuthModal,
   onOpenDriveModal,
+  onNavigateToTab,
 }) => {
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [selectedCase, setSelectedCase] = useState<DonkeyCase | null>(null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
-  const [ratingCaseId, setRatingCaseId] = useState<string | null>(null);
-  const [ratingScore, setRatingScore] = useState<number>(5);
-  const [hoverRating, setHoverRating] = useState<number>(0);
-  const [feedbackText, setFeedbackText] = useState<string>('');
-  const [ratingSuccessMsg, setRatingSuccessMsg] = useState<string | null>(null);
+  const [viewScope, setViewScope] = useState<'my' | 'all'>('my');
+  const [viewLayout, setViewLayout] = useState<'grid' | 'list'>('grid');
 
   // Google Drive export state
   const [exportingCaseId, setExportingCaseId] = useState<string | null>(null);
   const [driveSuccessToast, setDriveSuccessToast] = useState<string | null>(null);
-  const [driveErrorToast, setDriveErrorToast] = useState<string | null>(null);
 
-  const handleExportCase = async (c: DonkeyCase) => {
+  // PDF Report states
+  const [exportingPDFCaseId, setExportingPDFCaseId] = useState<string | null>(null);
+  const [isGeneralReportOpen, setIsGeneralReportOpen] = useState<boolean>(false);
+
+  const handleQuickExportPDF = async (c: DonkeyCase, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setExportingPDFCaseId(c.id);
+    setDriveSuccessToast(null);
+    try {
+      const { filename } = await exportSingleCasePDF(c, { autoDownload: true });
+      setDriveSuccessToast(`Case #${c.trackingCode} report downloaded: ${filename}`);
+      setTimeout(() => setDriveSuccessToast(null), 5000);
+    } catch (err: any) {
+      console.error('PDF export failed:', err);
+    } finally {
+      setExportingPDFCaseId(null);
+    }
+  };
+
+  const handleExportCase = async (c: DonkeyCase, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     setExportingCaseId(c.id);
     setDriveSuccessToast(null);
-    setDriveErrorToast(null);
     try {
       if (!hasValidGoogleToken()) {
         await googleSignIn();
@@ -88,147 +76,163 @@ export const MyCasesView: React.FC<MyCasesViewProps> = ({
       setTimeout(() => setDriveSuccessToast(null), 5000);
     } catch (err: any) {
       console.error('Drive export failed:', err);
-      setDriveErrorToast(err?.message || 'Failed to save case to Google Drive.');
-      setTimeout(() => setDriveErrorToast(null), 5000);
     } finally {
       setExportingCaseId(null);
     }
   };
 
   // Filter cases reported strictly by the logged-in user
-  const userCases = cases.filter((c) => {
+  const userReportedCases = cases.filter((c) => {
     if (!currentUser) return false;
-
-    // Matching logic for reporter
     const cleanUserPhone = (currentUser.phone || '').replace(/\D/g, '');
     const cleanCasePhone = (c.reporter?.phone || c.reporterUserPhone || '').replace(/\D/g, '');
     const phoneMatch = cleanUserPhone && cleanCasePhone && (cleanUserPhone.endsWith(cleanCasePhone.slice(-9)) || cleanCasePhone.endsWith(cleanUserPhone.slice(-9)));
     const nameMatch = currentUser.name && c.reporter?.name && currentUser.name.trim().toLowerCase() === c.reporter.name.trim().toLowerCase();
     const idMatch = (c.reporterUserId && (c.reporterUserId === currentUser.id || c.reporter?.id === currentUser.id));
-
-    const isUserCase = Boolean(phoneMatch || nameMatch || idMatch);
-    if (!isUserCase) return false;
-
-    if (filterStatus === 'all') return true;
-    if (filterStatus === 'reported') return c.status === 'reported' || c.status === 'pending';
-    if (filterStatus === 'under_review') return c.status === 'under_review';
-    if (filterStatus === 'active') return c.status === 'investigating' || c.status === 'dispatched';
-    if (filterStatus === 'resolved') return c.status === 'resolved';
-
-    return c.status === filterStatus;
+    return Boolean(phoneMatch || nameMatch || idMatch);
   });
 
-  const handleCopy = (code: string) => {
+  // Decide active pool based on viewScope (or fallback to all if user hasn't filed any yet)
+  const effectivePool = (viewScope === 'my' && userReportedCases.length > 0) ? userReportedCases : cases;
+
+  // Filter cases and arrange them strictly from latest to oldest
+  const displayCases = useMemo(() => {
+    const filtered = effectivePool.filter((c) => {
+      if (filterStatus === 'all') return true;
+      if (filterStatus === 'reported') return c.status === 'reported' || c.status === 'pending';
+      if (filterStatus === 'under_review') return c.status === 'under_review';
+      if (filterStatus === 'active') return c.status === 'investigating' || c.status === 'dispatched';
+      if (filterStatus === 'resolved') return c.status === 'resolved';
+      return c.status === filterStatus;
+    });
+    return sortCasesLatestFirst(filtered);
+  }, [effectivePool, filterStatus]);
+
+  const handleCopy = (code: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     navigator.clipboard.writeText(code);
     setCopiedCode(code);
     setTimeout(() => setCopiedCode(null), 2000);
   };
 
-  const getStepIndex = (status: CaseStatus): number => {
+  const getCategoryIcon = (cat: string) => {
+    switch (cat) {
+      case 'donkey_theft':
+        return <ShieldAlert className="w-5 h-5 text-red-600" />;
+      case 'slaughter_bush':
+        return <AlertTriangle className="w-5 h-5 text-rose-600" />;
+      case 'cruelty_injury':
+        return <Activity className="w-5 h-5 text-amber-600" />;
+      case 'welfare_neglect':
+        return <Heart className="w-5 h-5 text-orange-600" />;
+      default:
+        return <FileText className="w-5 h-5 text-blue-600" />;
+    }
+  };
+
+  const getStatusColor = (status: CaseStatus) => {
     switch (status) {
-      case 'reported':
-      case 'pending':
-        return 0;
-      case 'under_review':
-        return 1;
+      case 'resolved':
+        return { bg: 'bg-emerald-50', text: 'text-emerald-800', border: 'border-emerald-200', dot: 'bg-emerald-500' };
       case 'investigating':
       case 'dispatched':
-        return 2;
-      case 'resolved':
-        return 3;
+        return { bg: 'bg-amber-50', text: 'text-amber-800', border: 'border-amber-200', dot: 'bg-amber-500 animate-pulse' };
+      case 'under_review':
+        return { bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-200', dot: 'bg-blue-500' };
       default:
-        return 0;
-    }
-  };
-
-  const getRatingLabel = (score: number) => {
-    switch (score) {
-      case 5:
-        return { text: 'Excellent • Bora Kabisa', color: 'text-amber-600 bg-amber-50 border-amber-200' };
-      case 4:
-        return { text: 'Very Good • Nzuri Sana', color: 'text-emerald-700 bg-emerald-50 border-emerald-200' };
-      case 3:
-        return { text: 'Good • Nzuri', color: 'text-blue-700 bg-blue-50 border-blue-200' };
-      case 2:
-        return { text: 'Fair • Wastani', color: 'text-amber-700 bg-amber-50 border-amber-200' };
-      case 1:
-        return { text: 'Poor • Polepole', color: 'text-red-700 bg-red-50 border-red-200' };
-      default:
-        return { text: 'Select Rating', color: 'text-zinc-600 bg-zinc-50 border-zinc-200' };
-    }
-  };
-
-  const startRating = (c: DonkeyCase) => {
-    setRatingCaseId(c.id);
-    setRatingScore(c.userRating?.rating || 5);
-    setFeedbackText(c.userRating?.feedback || '');
-    setRatingSuccessMsg(null);
-  };
-
-  const submitRating = (caseId: string) => {
-    if (onRateCase) {
-      onRateCase(caseId, ratingScore, feedbackText);
-      setRatingSuccessMsg('Tathmini yako imehifadhiwa! (Your rating has been saved)');
-      setTimeout(() => {
-        setRatingCaseId(null);
-        setRatingSuccessMsg(null);
-      }, 1800);
+        return { bg: 'bg-red-50', text: 'text-red-800', border: 'border-red-200', dot: 'bg-red-500' };
     }
   };
 
   return (
-    <div className="space-y-4 pb-20 max-w-4xl mx-auto">
+    <div className="space-y-4 max-w-5xl mx-auto pb-16">
       {/* 1. Header Banner */}
-      <div className="bg-gradient-to-br from-[#991B1B] via-[#881313] to-[#681010] text-white rounded-3xl p-5 sm:p-6 border border-red-800 shadow-sm relative overflow-hidden">
-        <div className="relative z-10 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="bg-gradient-to-r from-zinc-950 via-zinc-900 to-red-950 text-white p-4 sm:p-5 rounded-3xl shadow-md border border-zinc-800">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-red-950/70 border border-red-700/60 text-[10px] font-extrabold uppercase tracking-wider text-red-200">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Real-time Case Progress & Feedback
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] uppercase tracking-wider font-extrabold px-2.5 py-0.5 rounded-full bg-red-600/30 border border-red-500/40 text-red-300">
+                Case Management Hub
+              </span>
+              <span className="text-xs text-zinc-400">Clean Icon Interface</span>
             </div>
-            <h1 className="text-xl sm:text-2xl font-black font-display tracking-tight text-white">
-              My Submitted Cases (Ripoti Zangu)
+            <h1 className="text-lg sm:text-xl font-black font-display text-white">
+              Kitui Donkey Cases (Kesi Zilizoripotiwa)
             </h1>
-            <p className="text-xs sm:text-sm text-red-100 max-w-xl font-medium">
-              Track your case step-by-step from reporting to resolution, see officer updates, and rate handling performance.
+            <p className="text-xs text-zinc-300 max-w-xl">
+              Each case is represented by an icon with its reference number. Click any icon to view complete details, GPS coordinates, investigation progress, or rate officer performance.
             </p>
           </div>
 
-          <button
-            id="btn-my-cases-new-report"
-            onClick={onOpenReportModal}
-            className="self-start sm:self-auto bg-white hover:bg-zinc-100 text-[#991B1B] font-extrabold px-5 py-2.5 rounded-2xl text-xs sm:text-sm flex items-center gap-2 shadow-md active:scale-95 transition-all shrink-0 border border-white/20"
-          >
-            <Plus className="w-4 h-4 stroke-[3]" />
-            <span>Ripoti Mpya</span>
-          </button>
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            <button
+              id="btn-general-report-pdf"
+              onClick={() => setIsGeneralReportOpen(true)}
+              className="bg-zinc-800 hover:bg-zinc-700 text-white font-bold px-3.5 py-2 rounded-2xl text-xs flex items-center gap-1.5 border border-zinc-700 shadow-xs active:scale-95 transition-all cursor-pointer"
+              title="Export Weekly, Monthly, Quarterly or Annual Case Audit Report (PDF)"
+            >
+              <FileText className="w-3.5 h-3.5 text-red-400" />
+              <span>General Report (PDF)</span>
+            </button>
+
+            <button
+              onClick={onOpenReportModal}
+              className="bg-red-600 hover:bg-red-700 text-white font-extrabold px-4 py-2 rounded-2xl text-xs flex items-center gap-1.5 shadow-xs active:scale-95 transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4 stroke-[3]" />
+              <span>Ripoti Mpya</span>
+            </button>
+          </div>
         </div>
 
-        {/* User Identity Info */}
-        <div className="mt-4 pt-3 border-t border-red-700/60 flex flex-wrap items-center justify-between gap-2 text-xs text-red-200">
-          <div className="flex items-center gap-1.5">
-            <User className="w-3.5 h-3.5 text-red-300" />
-            <span>Tracking reports filed by: <strong className="text-white">{currentUser.name}</strong> ({currentUser.phone})</span>
-          </div>
+        {/* User Identity & Sub-Controls */}
+        <div className="mt-4 pt-3 border-t border-zinc-800/80 flex flex-wrap items-center justify-between gap-2 text-xs text-zinc-400">
           <div className="flex items-center gap-2">
-            {onOpenDriveModal && (
-              <button
-                onClick={onOpenDriveModal}
-                className="text-[11px] font-bold bg-white text-zinc-900 hover:bg-red-50 px-2.5 py-1 rounded-lg border border-white/20 flex items-center gap-1 transition-all shadow-xs"
-              >
-                <svg viewBox="0 0 87.3 78" className="w-3.5 h-3.5 shrink-0">
-                  <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
-                  <path d="M43.65 25 29.9 1.2c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44A8.9 8.9 0 0 0 0 53h27.5z" fill="#00ac47"/>
-                  <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H59.8l5.85 10.15z" fill="#ea4335"/>
-                  <path d="M43.65 25 57.4 1.2C56.05.4 54.5 0 52.95 0H34.35c-1.55 0-3.1.4-4.45 1.2z" fill="#00832d"/>
-                  <path d="M59.8 53H87.3c0-1.55-.4-3.1-1.2-4.5l-13.75-23.8-13.75 23.8z" fill="#2684fc"/>
-                  <path d="m73.55 76.8-13.75-23.8H27.5L41.25 76.8c1.35.8 2.9 1.2 4.45 1.2h23.4c1.55 0 3.1-.4 4.45-1.2z" fill="#ffba00"/>
-                </svg>
-                <span>Google Drive Vault</span>
-              </button>
+            <span className="text-[11px]">Logged in as: <strong className="text-zinc-200">{currentUser.name}</strong></span>
+            {userReportedCases.length > 0 && (
+              <div className="flex items-center bg-black/40 rounded-xl p-0.5 border border-zinc-700">
+                <button
+                  onClick={() => setViewScope('my')}
+                  className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold transition-all ${
+                    viewScope === 'my' ? 'bg-red-600 text-white' : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  My Reports ({userReportedCases.length})
+                </button>
+                <button
+                  onClick={() => setViewScope('all')}
+                  className={`px-2.5 py-0.5 rounded-lg text-[10px] font-bold transition-all ${
+                    viewScope === 'all' ? 'bg-red-600 text-white' : 'text-zinc-400 hover:text-white'
+                  }`}
+                >
+                  All County Cases ({cases.length})
+                </button>
+              </div>
             )}
-            <div className="text-[11px] font-bold bg-black/25 px-2.5 py-0.5 rounded-lg border border-white/10">
-              {userCases.length} {userCases.length === 1 ? 'Report Logged' : 'Reports Logged'}
+          </div>
+
+          {/* Layout Switcher */}
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-zinc-400 font-medium">Layout:</span>
+            <div className="flex items-center bg-black/40 rounded-xl p-0.5 border border-zinc-700">
+              <button
+                onClick={() => setViewLayout('grid')}
+                className={`p-1.5 rounded-lg transition-colors ${
+                  viewLayout === 'grid' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white'
+                }`}
+                title="Icon Tile Grid"
+              >
+                <LayoutGrid className="w-3.5 h-3.5" />
+              </button>
+              <button
+                onClick={() => setViewLayout('list')}
+                className={`p-1.5 rounded-lg transition-colors ${
+                  viewLayout === 'list' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white'
+                }`}
+                title="Compact List"
+              >
+                <List className="w-3.5 h-3.5" />
+              </button>
             </div>
           </div>
         </div>
@@ -236,551 +240,312 @@ export const MyCasesView: React.FC<MyCasesViewProps> = ({
 
       {/* Google Drive Status Toast */}
       {driveSuccessToast && (
-        <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 p-3 rounded-2xl text-xs font-semibold flex items-center justify-between gap-2 animate-in slide-in-from-top duration-200 shadow-xs">
+        <div className="bg-emerald-50 border border-emerald-300 text-emerald-900 p-3 rounded-2xl text-xs font-semibold flex items-center justify-between gap-2 shadow-xs">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
             <span>{driveSuccessToast}</span>
           </div>
-          {onOpenDriveModal && (
+        </div>
+      )}
+
+      {/* 2. Filter Tabs & Sort Order Indicator */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs select-none no-scrollbar">
+          {[
+            { id: 'all', label: 'All Cases', count: effectivePool.length },
+            { id: 'reported', label: '1. Reported', count: effectivePool.filter(c => c.status === 'reported' || c.status === 'pending').length },
+            { id: 'under_review', label: '2. Under Review', count: effectivePool.filter(c => c.status === 'under_review').length },
+            { id: 'active', label: '3. Active / Dispatched', count: effectivePool.filter(c => c.status === 'investigating' || c.status === 'dispatched').length },
+            { id: 'resolved', label: '4. Resolved ✓', count: effectivePool.filter(c => c.status === 'resolved').length },
+          ].map((tab) => (
             <button
-              onClick={onOpenDriveModal}
-              className="text-[11px] underline font-bold text-emerald-800 hover:text-emerald-950 shrink-0"
+              key={tab.id}
+              id={`filter-tab-${tab.id}`}
+              onClick={() => setFilterStatus(tab.id)}
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
+                filterStatus === tab.id
+                  ? 'bg-zinc-950 text-white shadow-xs'
+                  : 'bg-white text-zinc-600 hover:bg-zinc-100 border border-zinc-200'
+              }`}
             >
-              Open Vault
+              <span>{tab.label}</span>
+              {tab.count > 0 && (
+                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                  filterStatus === tab.id ? 'bg-red-600 text-white' : 'bg-zinc-200 text-zinc-800'
+                }`}>
+                  {tab.count}
+                </span>
+              )}
             </button>
-          )}
+          ))}
         </div>
-      )}
 
-      {driveErrorToast && (
-        <div className="bg-red-50 border border-red-300 text-red-900 p-3 rounded-2xl text-xs font-semibold flex items-center gap-2 animate-in slide-in-from-top duration-200 shadow-xs">
-          <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
-          <span>{driveErrorToast}</span>
-        </div>
-      )}
-
-      {/* 2. Filter Tabs */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs select-none no-scrollbar">
-        {[
-          { id: 'all', label: 'All Cases', count: userCases.length },
-          { id: 'reported', label: '1. Reported', count: userCases.filter(c => c.status === 'reported' || c.status === 'pending').length },
-          { id: 'under_review', label: '2. Under Review', count: userCases.filter(c => c.status === 'under_review').length },
-          { id: 'active', label: '3. Active / Investigating', count: userCases.filter(c => c.status === 'investigating' || c.status === 'dispatched').length },
-          { id: 'resolved', label: '4. Resolved ✓', count: userCases.filter(c => c.status === 'resolved').length },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            id={`filter-tab-${tab.id}`}
-            onClick={() => setFilterStatus(tab.id)}
-            className={`px-3.5 py-2 rounded-2xl font-bold whitespace-nowrap transition-all flex items-center gap-1.5 ${
-              filterStatus === tab.id
-                ? 'bg-zinc-950 text-white shadow-xs'
-                : 'bg-white text-zinc-600 hover:bg-zinc-100 border border-zinc-200'
-            }`}
-          >
-            <span>{tab.label}</span>
-            {tab.count > 0 && (
-              <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                filterStatus === tab.id ? 'bg-red-600 text-white' : 'bg-zinc-200 text-zinc-800'
-              }`}>
-                {tab.count}
-              </span>
-            )}
-          </button>
-        ))}
+        {displayCases.length > 0 && (
+          <div className="flex items-center gap-1.5 text-[11px] text-zinc-500 font-medium shrink-0 self-end sm:self-center bg-zinc-100/90 px-2.5 py-1 rounded-xl border border-zinc-200">
+            <ArrowDownUp className="w-3.5 h-3.5 text-[#991B1B]" />
+            <span>Arranged: <strong className="text-zinc-800 font-bold">Latest to Oldest</strong></span>
+          </div>
+        )}
       </div>
 
-      {/* 3. Cases List */}
-      <div className="space-y-4">
-        {userCases.length === 0 ? (
-          <div className="bg-white rounded-3xl p-8 sm:p-12 border border-zinc-200 text-center space-y-4 shadow-2xs">
-            <div className="w-16 h-16 rounded-3xl bg-red-50 text-[#991B1B] flex items-center justify-center mx-auto border border-red-200 shadow-2xs">
-              <FileText className="w-8 h-8" />
-            </div>
-            <div className="space-y-1">
-              <h3 className="text-base sm:text-lg font-bold text-zinc-900 font-display">
-                {filterStatus === 'all' 
-                  ? 'No donkey cases recorded yet' 
-                  : `No cases currently in "${filterStatus.replace('_', ' ')}" status`}
-              </h3>
-              <p className="text-xs sm:text-sm text-zinc-500 max-w-md mx-auto">
-                Whenever you report stolen donkeys, bush slaughter, or animal welfare cruelty in Kitui, you can monitor the live progress and rate the resolution here.
-              </p>
-            </div>
-            <button
-              onClick={onOpenReportModal}
-              className="bg-[#991B1B] hover:bg-[#7F1D1D] text-white text-xs sm:text-sm font-bold px-6 py-3 rounded-2xl shadow-md inline-flex items-center gap-2 border border-red-800 active:scale-95 transition-all"
-            >
-              <Plus className="w-4 h-4 stroke-[3]" />
-              <span>Report Donkey Incident Now (Ripoti Sasa)</span>
-            </button>
+      {/* 3. Cases Rendered Cleanly as Icons with Reference Numbers */}
+      {displayCases.length === 0 ? (
+        <div className="bg-white rounded-3xl p-8 sm:p-12 border border-zinc-200 text-center space-y-4 shadow-2xs">
+          <div className="w-14 h-14 rounded-3xl bg-red-50 text-red-700 flex items-center justify-center mx-auto border border-red-200 shadow-2xs">
+            <FileText className="w-7 h-7" />
           </div>
-        ) : (
-          userCases.map((c) => {
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-zinc-900 font-display">
+              {filterStatus === 'all' 
+                ? 'No donkey cases recorded yet' 
+                : `No cases currently in "${filterStatus.replace('_', ' ')}" status`}
+            </h3>
+            <p className="text-xs text-zinc-500 max-w-md mx-auto">
+              Whenever an incident is logged, it appears here as an interactive icon with its tracking reference number.
+            </p>
+          </div>
+          <button
+            onClick={onOpenReportModal}
+            className="bg-red-700 hover:bg-red-800 text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-xs inline-flex items-center gap-2 active:scale-95 transition-all"
+          >
+            <Plus className="w-4 h-4 stroke-[3]" />
+            <span>Report Donkey Incident</span>
+          </button>
+        </div>
+      ) : viewLayout === 'grid' ? (
+        /* GRID LAYOUT: Clean Icon + Reference Number Tiles */
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {displayCases.map((c) => {
             const cat = CATEGORY_INFO[c.category] || CATEGORY_INFO['other'];
-            const currentStepIdx = getStepIndex(c.status);
+            const statusStyle = getStatusColor(c.status);
             const isResolved = c.status === 'resolved';
-            const hasRating = Boolean(c.userRating);
-            const isRatingActive = ratingCaseId === c.id;
 
             return (
               <div
                 key={c.id}
-                id={`user-case-card-${c.id}`}
-                className="bg-white rounded-3xl border border-zinc-200/90 shadow-2xs hover:shadow-xs transition-all overflow-hidden"
+                id={`case-icon-tile-${c.id}`}
+                onClick={() => setSelectedCase(c)}
+                className="group relative bg-white hover:bg-zinc-50/80 rounded-2xl border border-zinc-200/90 p-3.5 shadow-2xs hover:shadow-md transition-all duration-200 cursor-pointer flex flex-col justify-between gap-3 text-left overflow-hidden hover:border-zinc-300"
               >
-                {/* Top Card Header */}
-                <div className="p-4 sm:p-5 border-b border-zinc-100 space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="space-y-1.5">
-                      <div className="flex items-center flex-wrap gap-2">
-                        <span className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-lg border ${cat.badgeBg} ${cat.badgeBorder} ${cat.badgeText}`}>
-                          {cat.label}
+                {/* Top Row: Icon with Reference Number & Status */}
+                <div className="flex items-start justify-between gap-2.5">
+                  <div className="flex items-center gap-2.5">
+                    {/* Primary Case Icon Button */}
+                    <div className="w-11 h-11 rounded-2xl bg-zinc-100 group-hover:bg-red-50 border border-zinc-200 group-hover:border-red-200 flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-all">
+                      {getCategoryIcon(c.category)}
+                    </div>
+
+                    <div>
+                      {/* Case Reference Number (Prominently Highlighted) */}
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-mono text-xs font-black text-zinc-900 group-hover:text-red-700 transition-colors">
+                          #{c.trackingCode}
                         </span>
-                        
                         <button
-                          onClick={() => handleCopy(c.trackingCode)}
-                          className="font-mono text-[11px] font-bold text-zinc-700 bg-zinc-100 hover:bg-zinc-200 px-2 py-0.5 rounded-lg flex items-center gap-1 border border-zinc-200 transition-all"
-                          title="Click to copy tracking code"
+                          onClick={(e) => handleCopy(c.trackingCode, e)}
+                          className="p-1 text-zinc-400 hover:text-zinc-700 transition-colors"
+                          title="Copy reference code"
                         >
-                          <span>{c.trackingCode}</span>
                           {copiedCode === c.trackingCode ? (
                             <Check className="w-3 h-3 text-emerald-600 stroke-[3]" />
                           ) : (
-                            <Copy className="w-3 h-3 text-zinc-400" />
+                            <Copy className="w-3 h-3" />
                           )}
                         </button>
-
-                        <span className="text-[11px] text-zinc-400 font-medium">
-                          {new Date(c.reportedAt).toLocaleDateString('en-GB', {
-                            day: 'numeric',
-                            month: 'short',
-                            year: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit',
-                          })}
-                        </span>
                       </div>
 
-                      <h2 className="text-base sm:text-lg font-black text-zinc-950 font-display">
-                        {c.title}
-                      </h2>
-                    </div>
-
-                    {/* Status Badge & Google Drive Save */}
-                    <div className="shrink-0 flex items-center gap-2 flex-wrap sm:flex-nowrap justify-end">
-                      <button
-                        onClick={() => handleExportCase(c)}
-                        disabled={exportingCaseId === c.id}
-                        className="bg-zinc-50 hover:bg-zinc-100 text-zinc-800 border border-zinc-200 font-bold px-2.5 py-1 rounded-xl text-xs flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50"
-                        title="Save complete case dossier & evidence to Google Drive"
-                      >
-                        <svg viewBox="0 0 87.3 78" className="w-3.5 h-3.5 shrink-0">
-                          <path d="m6.6 66.85 3.85 6.65c.8 1.4 1.95 2.5 3.3 3.3l13.75-23.8H0c0 1.55.4 3.1 1.2 4.5z" fill="#0066da"/>
-                          <path d="M43.65 25 29.9 1.2c-1.35.8-2.5 1.9-3.3 3.3l-25.4 44A8.9 8.9 0 0 0 0 53h27.5z" fill="#00ac47"/>
-                          <path d="M73.55 76.8c1.35-.8 2.5-1.9 3.3-3.3l1.6-2.75 7.65-13.25c.8-1.4 1.2-2.95 1.2-4.5H59.8l5.85 10.15z" fill="#ea4335"/>
-                          <path d="M43.65 25 57.4 1.2C56.05.4 54.5 0 52.95 0H34.35c-1.55 0-3.1.4-4.45 1.2z" fill="#00832d"/>
-                          <path d="M59.8 53H87.3c0-1.55-.4-3.1-1.2-4.5l-13.75-23.8-13.75 23.8z" fill="#2684fc"/>
-                          <path d="m73.55 76.8-13.75-23.8H27.5L41.25 76.8c1.35.8 2.9 1.2 4.45 1.2h23.4c1.55 0 3.1-.4 4.45-1.2z" fill="#ffba00"/>
-                        </svg>
-                        <span>{exportingCaseId === c.id ? 'Saving...' : 'Drive'}</span>
-                      </button>
-
-                      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold border ${
-                        isResolved
-                          ? 'bg-emerald-50 text-emerald-800 border-emerald-300'
-                          : c.status === 'investigating' || c.status === 'dispatched'
-                          ? 'bg-amber-50 text-amber-900 border-amber-300'
-                          : 'bg-red-50 text-red-900 border-red-200'
-                      }`}>
-                        <span className={`w-2 h-2 rounded-full ${isResolved ? 'bg-emerald-500' : 'bg-amber-500 animate-pulse'}`} />
-                        {isResolved ? 'Resolved ✓' : c.status === 'investigating' ? 'Active Investigation' : c.status.replace('_', ' ')}
+                      <span className="text-[10px] text-zinc-500 font-medium block truncate max-w-[130px]">
+                        {c.location?.subCounty || 'Kitui'} • {c.location?.village || 'Area'}
                       </span>
                     </div>
                   </div>
 
-                  <p className="text-xs sm:text-sm text-zinc-600 leading-relaxed">
-                    {c.description}
-                  </p>
+                  {/* Status Indicator Pill */}
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusStyle.bg} ${statusStyle.border} ${statusStyle.text}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${statusStyle.dot}`} />
+                    <span>{isResolved ? 'Resolved' : c.status.replace('_', ' ')}</span>
+                  </span>
+                </div>
 
-                  {/* Incident Snapshot Badges */}
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs bg-zinc-50 p-3 rounded-2xl border border-zinc-200/80">
-                    <div className="flex items-center gap-1.5 text-zinc-700 truncate">
-                      <MapPin className="w-4 h-4 text-[#991B1B] shrink-0" />
-                      <span className="truncate font-medium">{c.location.subCounty}, {c.location.village}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-zinc-700">
-                      <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
-                      <span className="font-semibold">{c.donkeysCount} Donkey(s) Involved</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-zinc-700 col-span-2 sm:col-span-1">
-                      <Clock className="w-4 h-4 text-zinc-500 shrink-0" />
-                      <span className="text-[11px] truncate">Urgency: <strong className="uppercase text-red-700">{c.urgency}</strong></span>
-                    </div>
+                {/* Case Title Preview */}
+                <div>
+                  <h4 className="text-xs font-bold text-zinc-900 group-hover:text-zinc-950 line-clamp-1">
+                    {c.title}
+                  </h4>
+                  <div className="flex items-center gap-2 text-[10px] text-zinc-500 mt-0.5">
+                    <span>{c.donkeysCount} {c.donkeysCount === 1 ? 'donkey' : 'donkeys'}</span>
+                    <span>•</span>
+                    <span className="capitalize">{cat.label}</span>
                   </div>
                 </div>
 
-                {/* 4. PROGRESS PIPELINE TRACKER */}
-                <div className="p-4 sm:p-5 bg-gradient-to-b from-white to-zinc-50 border-b border-zinc-100">
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="text-xs font-black uppercase tracking-wider text-zinc-900 flex items-center gap-1.5">
-                      <Radio className="w-3.5 h-3.5 text-[#991B1B]" />
-                      Case Lifecycle Progress (Mwenendo wa Kesi)
+                {/* Prominent Date Reported Badge */}
+                <div className="bg-zinc-50 hover:bg-zinc-100/70 border border-zinc-200/80 rounded-xl px-2.5 py-1.5 flex items-center justify-between text-[10px] transition-colors">
+                  <div className="flex items-center gap-1.5 text-zinc-700 font-medium truncate">
+                    <Calendar className="w-3.5 h-3.5 text-[#991B1B] shrink-0" />
+                    <span>Reported: <strong className="text-zinc-900 font-extrabold">{formatReportedDateTime(c.reportedAt)}</strong></span>
+                  </div>
+                  {formatReportedRelative(c.reportedAt) && (
+                    <span className="text-[9px] font-bold text-zinc-500 bg-white px-1.5 py-0.5 rounded border border-zinc-200 shrink-0 ml-1">
+                      {formatReportedRelative(c.reportedAt)}
+                    </span>
+                  )}
+                </div>
+
+                {/* Bottom Row: Rating Chip & Quick Action prompt */}
+                <div className="pt-2 border-t border-zinc-100 flex items-center justify-between text-[11px]">
+                  {c.userRating ? (
+                    <div className="flex items-center gap-1 text-amber-600 font-bold">
+                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
+                      <span>{c.userRating.rating}/5 Rated</span>
                     </div>
-                    <span className="text-[11px] font-bold text-zinc-500">
-                      Stage {currentStepIdx + 1} of 4
+                  ) : (
+                    <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                      ★ Rate Case
+                    </span>
+                  )}
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      id={`btn-pdf-case-${c.id}`}
+                      onClick={(e) => handleQuickExportPDF(c, e)}
+                      disabled={exportingPDFCaseId === c.id}
+                      className="p-1 text-zinc-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-200"
+                      title="Export Case Report PDF"
+                    >
+                      {exportingPDFCaseId === c.id ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-red-600" />
+                      ) : (
+                        <Download className="w-3.5 h-3.5" />
+                      )}
+                    </button>
+
+                    <span className="text-[11px] font-bold text-zinc-700 group-hover:text-red-700 flex items-center gap-0.5 transition-colors">
+                      <span>View</span>
+                      <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
                     </span>
                   </div>
-
-                  {/* Horizontal Responsive Progress Bar */}
-                  <div className="relative">
-                    {/* Connecting Bar Background */}
-                    <div className="hidden sm:block absolute top-5 left-8 right-8 h-1 bg-zinc-200 z-0">
-                      <div 
-                        className="h-full bg-[#991B1B] transition-all duration-500 rounded-full"
-                        style={{ width: `${(currentStepIdx / 3) * 100}%` }}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 sm:gap-2 relative z-10">
-                      {PROGRESS_STEPS.map((step, idx) => {
-                        const isCompleted = idx < currentStepIdx || isResolved;
-                        const isCurrent = idx === currentStepIdx && !isResolved;
-                        const isUpcoming = idx > currentStepIdx && !isResolved;
-
-                        return (
-                          <div
-                            key={step.id}
-                            className={`p-3 rounded-2xl border transition-all flex sm:flex-col items-center sm:items-start justify-between sm:justify-start gap-2 ${
-                              isCurrent
-                                ? 'bg-red-50/90 border-[#991B1B] ring-2 ring-[#991B1B]/20 shadow-xs'
-                                : isCompleted
-                                ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
-                                : 'bg-zinc-50/60 border-zinc-200 text-zinc-400'
-                            }`}
-                          >
-                            <div className="flex sm:flex-col items-center sm:items-start gap-2.5 w-full">
-                              {/* Step Icon / Number */}
-                              <div className={`w-8 h-8 rounded-xl flex items-center justify-center font-black text-xs shrink-0 shadow-2xs border ${
-                                isCompleted
-                                  ? 'bg-emerald-600 border-emerald-700 text-white'
-                                  : isCurrent
-                                  ? 'bg-[#991B1B] border-red-800 text-white animate-pulse'
-                                  : 'bg-zinc-200 border-zinc-300 text-zinc-600'
-                              }`}>
-                                {isCompleted ? <Check className="w-4 h-4 stroke-[3]" /> : idx + 1}
-                              </div>
-
-                              <div>
-                                <div className="flex items-center gap-1">
-                                  <span className={`text-xs font-extrabold ${
-                                    isCurrent ? 'text-[#991B1B]' : isCompleted ? 'text-emerald-900' : 'text-zinc-600'
-                                  }`}>
-                                    {step.label}
-                                  </span>
-                                  {isCurrent && (
-                                    <span className="w-2 h-2 rounded-full bg-[#991B1B] animate-ping" />
-                                  )}
-                                </div>
-                                <div className="text-[10px] font-bold text-zinc-500">
-                                  {step.swahiliLabel}
-                                </div>
-                              </div>
-                            </div>
-
-                            <p className="hidden sm:block text-[11px] text-zinc-500 leading-snug mt-1 pt-1 border-t border-zinc-200/50 w-full">
-                              {step.description}
-                            </p>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Resolution Notes Banner if resolved */}
-                  {c.resolutionNotes && (
-                    <div className="mt-3.5 bg-emerald-50 border border-emerald-300 p-3.5 rounded-2xl text-xs text-emerald-950 space-y-1 shadow-2xs">
-                      <div className="font-bold flex items-center gap-1.5 text-emerald-900">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                        <span>Resolution Details (Matokeo ya Kesi):</span>
-                      </div>
-                      <p className="text-emerald-800 leading-relaxed">
-                        {c.resolutionNotes}
-                      </p>
-                      {c.resolvedAt && (
-                        <div className="text-[10px] text-emerald-700 font-medium">
-                          Resolved on: {new Date(c.resolvedAt).toLocaleString('en-GB')}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-
-                {/* 5. CASE HANDLING RATING SECTION */}
-                <div className="p-4 sm:p-5 bg-zinc-50/80 space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center border border-amber-300">
-                        <Star className="w-4 h-4 fill-amber-500 text-amber-500" />
-                      </div>
-                      <div>
-                        <h4 className="text-xs sm:text-sm font-extrabold text-zinc-950">
-                          Rate Case Handling (Tathmini ya Utunzaji wa Kesi)
-                        </h4>
-                        <p className="text-[11px] text-zinc-500">
-                          Provide feedback on responsiveness, officer communication, and recovery support.
-                        </p>
-                      </div>
-                    </div>
-
-                    {!isRatingActive && hasRating && (
-                      <button
-                        onClick={() => startRating(c)}
-                        className="text-xs font-bold text-[#991B1B] hover:text-[#7F1D1D] bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-xl border border-red-200 transition-all shrink-0"
-                      >
-                        Edit Review
-                      </button>
-                    )}
-                  </div>
-
-                  {/* Display existing rating if not editing */}
-                  {!isRatingActive && hasRating && c.userRating && (
-                    <div className="bg-white p-3.5 rounded-2xl border border-zinc-200 shadow-2xs space-y-2">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1">
-                          {[1, 2, 3, 4, 5].map((s) => (
-                            <Star
-                              key={s}
-                              className={`w-4 h-4 ${
-                                s <= c.userRating!.rating
-                                  ? 'fill-amber-400 text-amber-400'
-                                  : 'text-zinc-200'
-                              }`}
-                            />
-                          ))}
-                          <span className={`text-[11px] font-extrabold px-2 py-0.5 rounded-md border ml-2 ${getRatingLabel(c.userRating.rating).color}`}>
-                            {getRatingLabel(c.userRating.rating).text}
-                          </span>
-                        </div>
-
-                        <span className="text-[10px] text-zinc-400">
-                          {new Date(c.userRating.ratedAt).toLocaleDateString('en-GB')}
-                        </span>
-                      </div>
-
-                      {c.userRating.feedback && (
-                        <p className="text-xs text-zinc-700 italic bg-zinc-50 p-2.5 rounded-xl border border-zinc-100">
-                          "{c.userRating.feedback}"
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Prompt to rate if unrated or in editing mode */}
-                  {(!hasRating || isRatingActive) && (
-                    <div className="bg-white p-4 rounded-2xl border border-zinc-200 shadow-2xs space-y-3">
-                      <div>
-                        <span className="block text-xs font-bold text-zinc-700 mb-1.5">
-                          How satisfied are you with how this case is being handled?
-                        </span>
-
-                        {/* Star Selection Row */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <div className="flex items-center gap-1 bg-zinc-50 p-1.5 rounded-xl border border-zinc-200">
-                            {[1, 2, 3, 4, 5].map((star) => (
-                              <button
-                                key={star}
-                                type="button"
-                                onClick={() => setRatingScore(star)}
-                                onMouseEnter={() => setHoverRating(star)}
-                                onMouseLeave={() => setHoverRating(0)}
-                                className="p-1 rounded-lg hover:scale-110 active:scale-95 transition-all"
-                                title={`Rate ${star} Star${star > 1 ? 's' : ''}`}
-                              >
-                                <Star
-                                  className={`w-6 h-6 transition-colors ${
-                                    star <= (hoverRating || ratingScore)
-                                      ? 'fill-amber-400 text-amber-400 drop-shadow-xs'
-                                      : 'text-zinc-300'
-                                  }`}
-                                />
-                              </button>
-                            ))}
-                          </div>
-
-                          <span className={`text-xs font-bold px-2.5 py-1 rounded-xl border ${getRatingLabel(hoverRating || ratingScore).color}`}>
-                            {getRatingLabel(hoverRating || ratingScore).text}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Feedback Comment */}
-                      <div className="space-y-1">
-                        <label className="block text-[11px] font-bold text-zinc-600">
-                          Optional Remarks / Comments (Maoni kwa Maafisa):
-                        </label>
-                        <textarea
-                          rows={2}
-                          value={feedbackText}
-                          onChange={(e) => setFeedbackText(e.target.value)}
-                          placeholder="e.g., Chief and veterinary team arrived promptly at the village and helped secure the 2 missing donkeys..."
-                          className="w-full text-xs p-2.5 bg-zinc-50 border border-zinc-200 rounded-xl focus:bg-white focus:border-[#991B1B] focus:ring-2 focus:ring-[#991B1B]/20 outline-hidden transition-all placeholder:text-zinc-400 resize-none"
-                        />
-                      </div>
-
-                      {/* Success Toast / Notification */}
-                      {ratingSuccessMsg && (
-                        <div className="p-2.5 bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-xl text-xs font-bold flex items-center gap-2">
-                          <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                          <span>{ratingSuccessMsg}</span>
-                        </div>
-                      )}
-
-                      {/* Action Buttons */}
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => submitRating(c.id)}
-                          className="bg-[#991B1B] hover:bg-[#7F1D1D] text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-xs active:scale-95 transition-all flex items-center gap-1.5 border border-red-800"
-                        >
-                          <Send className="w-3.5 h-3.5" />
-                          <span>Hifadhi Tathmini (Submit Rating)</span>
-                        </button>
-
-                        {isRatingActive && (
-                          <button
-                            type="button"
-                            onClick={() => setRatingCaseId(null)}
-                            className="bg-zinc-100 hover:bg-zinc-200 text-zinc-700 font-bold text-xs px-3.5 py-2.5 rounded-xl transition-all"
-                          >
-                            Cancel
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Footer Bar with View Detailed Audit Trail */}
-                <div className="p-3 sm:p-4 bg-zinc-100/60 border-t border-zinc-200/80 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-2 text-zinc-500">
-                    <Clock className="w-3.5 h-3.5 text-zinc-400" />
-                    <span>{c.actionLogs?.length || 0} Action Log(s) recorded</span>
-                  </div>
-
-                  <button
-                    onClick={() => setSelectedCase(c)}
-                    className="font-bold text-zinc-900 hover:text-[#991B1B] flex items-center gap-1 transition-colors group"
-                  >
-                    <span>View Investigation Trail & Full Details</span>
-                    <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
-                  </button>
                 </div>
               </div>
             );
-          })
-        )}
-      </div>
+          })}
+        </div>
+      ) : (
+        /* LIST LAYOUT: Compact Reference Rows */
+        <div className="bg-white rounded-2xl border border-zinc-200 divide-y divide-zinc-100 overflow-hidden shadow-2xs">
+          {displayCases.map((c) => {
+            const cat = CATEGORY_INFO[c.category] || CATEGORY_INFO['other'];
+            const statusStyle = getStatusColor(c.status);
+            const isResolved = c.status === 'resolved';
 
-      {/* 6. Comprehensive Case Detail Modal */}
-      {selectedCase && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 animate-fadeIn">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 border border-zinc-200 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
-            {/* Modal Header */}
-            <div className="flex items-start justify-between gap-3 border-b border-zinc-100 pb-3">
-              <div>
-                <span className={`text-[10px] font-extrabold uppercase px-2.5 py-0.5 rounded-md border ${CATEGORY_INFO[selectedCase.category].badgeBg} ${CATEGORY_INFO[selectedCase.category].badgeBorder} ${CATEGORY_INFO[selectedCase.category].badgeText}`}>
-                  {CATEGORY_INFO[selectedCase.category].label}
-                </span>
-                <h3 className="text-base sm:text-lg font-black font-display text-zinc-950 mt-1">
-                  {selectedCase.title}
-                </h3>
-              </div>
-              <button
-                onClick={() => setSelectedCase(null)}
-                className="w-8 h-8 rounded-full bg-zinc-100 hover:bg-zinc-200 text-zinc-700 flex items-center justify-center font-bold text-sm transition-all"
+            return (
+              <div
+                key={c.id}
+                id={`case-icon-row-${c.id}`}
+                onClick={() => setSelectedCase(c)}
+                className="group p-3 sm:p-4 hover:bg-zinc-50/80 transition-colors flex items-center justify-between gap-3 cursor-pointer"
               >
-                ✕
-              </button>
-            </div>
+                {/* Left: Icon & Code */}
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-zinc-100 group-hover:bg-red-50 border border-zinc-200 group-hover:border-red-200 flex items-center justify-center shrink-0 shadow-2xs">
+                    {getCategoryIcon(c.category)}
+                  </div>
 
-            {/* Case Snapshot Grid */}
-            <div className="bg-zinc-50 p-3.5 rounded-2xl border border-zinc-200 space-y-2 text-xs">
-              <div className="flex justify-between items-center">
-                <span className="text-zinc-500 font-medium">Tracking Code</span>
-                <span className="font-mono font-bold text-[#991B1B] bg-red-50 px-2 py-0.5 rounded border border-red-200">{selectedCase.trackingCode}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-zinc-500 font-medium">Current Status</span>
-                <span className="font-bold text-zinc-900 capitalize">{selectedCase.status.replace('_', ' ')}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-zinc-500 font-medium">Location</span>
-                <span className="font-semibold text-zinc-900">{selectedCase.location.subCounty}, {selectedCase.location.village}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-zinc-500 font-medium">Landmark</span>
-                <span className="text-zinc-700 text-right max-w-xs truncate">{selectedCase.location.landmark}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-zinc-500 font-medium">Donkeys Affected</span>
-                <span className="font-bold text-zinc-900">{selectedCase.donkeysCount} Animal(s)</span>
-              </div>
-            </div>
-
-            {/* Description */}
-            <div className="space-y-1">
-              <span className="text-xs font-bold text-zinc-700">Incident Narrative:</span>
-              <p className="text-xs text-zinc-700 bg-zinc-50 p-3 rounded-2xl border border-zinc-200 leading-relaxed">
-                {selectedCase.description}
-              </p>
-            </div>
-
-            {/* Investigation Trail Logs */}
-            <div className="space-y-2 pt-1">
-              <h4 className="text-xs font-black uppercase tracking-wider text-zinc-900 flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-[#991B1B]" />
-                Investigation Action Logs ({selectedCase.actionLogs?.length || 0})
-              </h4>
-
-              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                {(!selectedCase.actionLogs || selectedCase.actionLogs.length === 0) ? (
-                  <p className="text-xs text-zinc-400 italic bg-zinc-50 p-3 rounded-xl">
-                    No officer action logs recorded yet. Triage will appear here shortly.
-                  </p>
-                ) : (
-                  selectedCase.actionLogs.map((log) => (
-                    <div
-                      key={log.id}
-                      className="p-3 bg-zinc-50 rounded-xl border border-zinc-200 text-xs space-y-1"
-                    >
-                      <div className="flex items-center justify-between font-bold text-zinc-900">
-                        <span>{log.action}</span>
-                        <span className="text-[10px] text-zinc-400 font-normal">
-                          {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                        </span>
-                      </div>
-                      <div className="text-[11px] text-zinc-600">
-                        {log.notes || log.note}
-                      </div>
-                      <div className="text-[10px] text-zinc-400">
-                        Officer: {log.officer || log.officerName || 'Welfare Unit'}
-                      </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-black text-zinc-900 group-hover:text-red-700 transition-colors">
+                        #{c.trackingCode}
+                      </span>
+                      <span className={`text-[9px] font-extrabold uppercase px-1.5 py-0.2 rounded border ${statusStyle.bg} ${statusStyle.border} ${statusStyle.text}`}>
+                        {isResolved ? 'Resolved' : c.status.replace('_', ' ')}
+                      </span>
                     </div>
-                  ))
-                )}
-              </div>
-            </div>
 
-            <button
-              onClick={() => setSelectedCase(null)}
-              className="w-full bg-zinc-950 hover:bg-zinc-900 text-white font-bold py-3 rounded-2xl text-xs shadow-xs active:scale-95 transition-all"
-            >
-              Close Details (Funga)
-            </button>
-          </div>
+                    <h4 className="text-xs font-bold text-zinc-900 truncate">
+                      {c.title}
+                    </h4>
+
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px] text-zinc-500 mt-0.5">
+                      <span>{c.location?.subCounty || 'Kitui'}{c.location?.village ? `, ${c.location.village}` : ''} • {c.donkeysCount || 1} Donkey(s)</span>
+                      <span className="text-zinc-300">•</span>
+                      <span className="inline-flex items-center gap-1 font-semibold text-zinc-700 bg-zinc-100/90 px-1.5 py-0.5 rounded border border-zinc-200">
+                        <Calendar className="w-3 h-3 text-[#991B1B]" />
+                        <span>Reported: {formatReportedDateTime(c.reportedAt)}</span>
+                        {formatReportedRelative(c.reportedAt) && (
+                          <span className="text-[9px] text-zinc-400 font-normal">({formatReportedRelative(c.reportedAt)})</span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right: Rating indicator & Click to View */}
+                <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+                  {c.userRating ? (
+                    <div className="flex items-center gap-1 text-xs font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200">
+                      <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-500" />
+                      <span>{c.userRating.rating}/5</span>
+                    </div>
+                  ) : (
+                    <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-lg border border-amber-200 hidden sm:inline-block">
+                      ★ Rate Case
+                    </span>
+                  )}
+
+                  <button
+                    id={`btn-list-pdf-${c.id}`}
+                    onClick={(e) => handleQuickExportPDF(c, e)}
+                    disabled={exportingPDFCaseId === c.id}
+                    className="p-1.5 text-zinc-400 hover:text-red-700 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-200 cursor-pointer"
+                    title="Export Case Report PDF"
+                  >
+                    {exportingPDFCaseId === c.id ? (
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-red-600" />
+                    ) : (
+                      <Download className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+
+                  <ChevronRight className="w-4 h-4 text-zinc-400 group-hover:text-zinc-700 group-hover:translate-x-0.5 transition-all" />
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
+
+      {/* 4. Full Case Details & Rating Modal */}
+      <CaseDetailsPreviewModal
+        isOpen={Boolean(selectedCase)}
+        onClose={() => setSelectedCase(null)}
+        caseItem={selectedCase}
+        currentUser={currentUser}
+        onRateCase={(caseId, rating, feedback) => {
+          if (onRateCase) {
+            onRateCase(caseId, rating, feedback);
+          }
+          // Also update local selected case userRating for instant reactivity
+          if (selectedCase && selectedCase.id === caseId) {
+            setSelectedCase({
+              ...selectedCase,
+              userRating: {
+                rating,
+                feedback,
+                ratedAt: new Date().toISOString(),
+                ratedByUserId: currentUser.id,
+              },
+            });
+          }
+        }}
+        onNavigateToTab={onNavigateToTab}
+      />
+
+      {/* 5. General Report (Weekly, Monthly, Quarterly, Annually) Modal */}
+      <GeneralReportModal
+        isOpen={isGeneralReportOpen}
+        onClose={() => setIsGeneralReportOpen(false)}
+        cases={cases}
+      />
     </div>
   );
 };

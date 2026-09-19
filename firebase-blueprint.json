@@ -1,0 +1,122 @@
+{
+  "entities": {
+    "DonkeyCase": {
+      "title": "DonkeyCase",
+      "description": "Donkey incident report filed by citizens or welfare officers in Kitui County",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique case ID" },
+        "trackingCode": { "type": "string", "description": "Reference tracking code, e.g. KR-1001" },
+        "title": { "type": "string", "description": "Case title" },
+        "description": { "type": "string", "description": "Incident narrative details" },
+        "category": { "type": "string", "description": "Category of incident (donkey_theft, slaughter_bush, cruelty_injury, welfare_neglect, other)" },
+        "urgency": { "type": "string", "description": "Urgency level (low, medium, high, critical)" },
+        "status": { "type": "string", "description": "Case lifecycle status (reported, pending, under_review, investigating, dispatched, resolved)" },
+        "donkeysCount": { "type": "number", "description": "Number of donkeys involved" },
+        "reportedAt": { "type": "string", "description": "ISO timestamp of report" }
+      },
+      "required": ["id", "trackingCode", "title", "category", "status"]
+    },
+    "DiraMessage": {
+      "title": "DiraMessage",
+      "description": "Community alert and liaison chat message",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique message ID" },
+        "senderId": { "type": "string", "description": "User ID of sender" },
+        "senderName": { "type": "string", "description": "Name of sender" },
+        "content": { "type": "string", "description": "Content of message" },
+        "channelId": { "type": "string", "description": "Channel identifier" },
+        "timestamp": { "type": "string", "description": "ISO timestamp" },
+        "voiceNote": { "type": "object", "description": "Voice note attachment with audio URL and duration" },
+        "mediaAttachment": { "type": "object", "description": "Photo or document attachment with file metadata" },
+        "caseTrackingCode": { "type": "string", "description": "Tagged case tracking code" },
+        "location": { "type": "object", "description": "Attached GPS coordinates" }
+      },
+      "required": ["id", "senderId", "senderName", "timestamp"]
+    },
+    "LoggedInDevice": {
+      "title": "LoggedInDevice",
+      "description": "Live GPS telemetry and status of logged in device for community radar",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Hardware/Session device ID" },
+        "userId": { "type": "string", "description": "Associated user profile ID" },
+        "userName": { "type": "string", "description": "Display name of user" },
+        "userRole": { "type": "string", "description": "User role" },
+        "isOnline": { "type": "boolean", "description": "Online state" },
+        "lastSeen": { "type": "string", "description": "ISO timestamp of last activity" }
+      },
+      "required": ["id", "userId", "userName", "isOnline"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User account profile and operational role",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique user ID" },
+        "name": { "type": "string", "description": "User full name" },
+        "phone": { "type": "string", "description": "Contact phone number" },
+        "role": { "type": "string", "description": "Operational role (community_member, vet_officer, police_chief, admin)" }
+      },
+      "required": ["id", "name", "role"]
+    },
+    "ActiveCallSession": {
+      "title": "ActiveCallSession",
+      "description": "Real-time voice and video calling session across community responders and devices",
+      "type": "object",
+      "properties": {
+        "callId": { "type": "string", "description": "Unique call ID" },
+        "callType": { "type": "string", "description": "Call media type (audio or video)" },
+        "isGroup": { "type": "boolean", "description": "Whether this is a group room call" },
+        "status": { "type": "string", "description": "Call status (calling, ringing, connected, ended, rejected)" },
+        "startedAt": { "type": "string", "description": "ISO timestamp of call creation" }
+      },
+      "required": ["callId", "callType", "status", "startedAt"]
+    },
+    "ForceLogoutRecord": {
+      "title": "ForceLogoutRecord",
+      "description": "Administrative remote logout command issued by Super Admin to revoke a user device session",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique record ID" },
+        "targetDeviceId": { "type": "string", "description": "Device hardware ID to log out" },
+        "targetUserId": { "type": "string", "description": "User profile ID" },
+        "targetUserName": { "type": "string", "description": "Name of user logged out" },
+        "loggedOutBy": { "type": "string", "description": "Admin identity that performed the action" },
+        "timestamp": { "type": "string", "description": "ISO timestamp of revocation" }
+      },
+      "required": ["id", "targetDeviceId", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/dira_calls/{callId}": {
+      "schema": { "$ref": "#/entities/ActiveCallSession" },
+      "description": "Active voice and video calls for instant cross-device ringing and WebRTC negotiation"
+    },
+    "/dira_force_logouts/{logoutId}": {
+      "schema": { "$ref": "#/entities/ForceLogoutRecord" },
+      "description": "Remote logout directives dispatched by Super Admin to remove devices from map and terminate sessions"
+    },
+    "/dira_cases/{caseId}": {
+      "schema": { "$ref": "#/entities/DonkeyCase" },
+      "description": "Repository of all reported donkey cases and investigations"
+    },
+    "/dira_messages/{msgId}": {
+      "schema": { "$ref": "#/entities/DiraMessage" },
+      "description": "Public community and officer coordination broadcast messages"
+    },
+    "/dira_logged_in_devices/{deviceId}": {
+      "schema": { "$ref": "#/entities/LoggedInDevice" },
+      "description": "Live device presence and radar coordinates for all logged-in users"
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Registered user profiles and credentials"
+    },
+    "/dira_users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Primary repository of all registered system user accounts"
+    }
+  }
+}

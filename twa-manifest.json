@@ -1,0 +1,21 @@
+{
+  "packageId": "ke.or.caritas.kitui.dira",
+  "host": "ais-pre-lcxmwdpyoc256lycqd3ogb-642916903521.europe-west1.run.app",
+  "name": "DIRA - Donkey Incident Reporting APP (Kaa Rada!)",
+  "launcherName": "DIRA",
+  "display": "standalone",
+  "themeColor": "#991B1B",
+  "navigationColor": "#991B1B",
+  "backgroundColor": "#09090B",
+  "enableNotifications": true,
+  "startUrl": "/",
+  "iconUrl": "https://ais-pre-lcxmwdpyoc256lycqd3ogb-642916903521.europe-west1.run.app/pwa-512x512.png",
+  "maskableIconUrl": "https://ais-pre-lcxmwdpyoc256lycqd3ogb-642916903521.europe-west1.run.app/pwa-maskable-512x512.png",
+  "appVersionCode": 1,
+  "appVersionName": "1.0.0",
+  "signingKey": {
+    "alias": "dira-caritas",
+    "storeFile": "android.keystore"
+  },
+  "generatorApp": "bubblewrap-cli"
+}

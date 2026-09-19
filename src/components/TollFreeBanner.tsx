@@ -68,7 +68,7 @@ export const TollFreeBanner: React.FC<TollFreeBannerProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 className="text-[11px] font-bold text-red-200 uppercase tracking-wider">
-              Caritas Kitui Donkey Welfare Desk
+              DIRA Emergency Welfare Desk
             </h2>
             <div className="text-2xl sm:text-3xl font-black tracking-tight font-display text-white flex items-center gap-2">
               <PhoneCall className="w-6 h-6 text-white animate-pulse shrink-0" />

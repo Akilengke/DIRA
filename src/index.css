@@ -9,6 +9,9 @@
 
 @layer base {
   html, body {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
     height: 100%;
     min-height: 100%;
     min-height: 100dvh;
@@ -16,11 +19,49 @@
     background-color: #f4f4f5;
     color: #18181B;
     -webkit-tap-highlight-color: transparent;
-    touch-action: manipulation;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+    touch-action: pan-y;
+    overscroll-behavior: none;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  
+  #root {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    touch-action: pan-y;
   }
   
   h1, h2, h3, h4, .font-display {
     font-family: 'Outfit', 'Plus Jakarta Sans', sans-serif;
+  }
+
+  /* Prevent selection bubbles and tap lag on buttons/links */
+  button, a, [role="button"], select, nav, header {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  /* Allow smooth text selection and typing inside inputs */
+  input, textarea, [contenteditable="true"] {
+    -webkit-user-select: text !important;
+    user-select: text !important;
+    touch-action: auto !important;
+  }
+
+  /* Prevent automatic mobile browser zoom on form input focus (font-size < 16px causes screen jumps) */
+  @media screen and (max-width: 768px) {
+    input, select, textarea {
+      font-size: 16px !important;
+    }
   }
 }
 
@@ -81,6 +122,10 @@
   height: 100%;
 }
 
+.leaflet-container {
+  touch-action: pan-x pan-y pinch-zoom !important;
+}
+
 .leaflet-popup-content-wrapper {
   padding: 0 !important;
   border-radius: 1rem !important;
@@ -119,6 +164,15 @@
   color: #991B1B !important;
   font-weight: bold !important;
   border-bottom: 1px solid #f4f4f5 !important;
+  width: 42px !important;
+  height: 42px !important;
+  line-height: 42px !important;
+  font-size: 20px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  touch-action: manipulation !important;
+  -webkit-tap-highlight-color: transparent !important;
 }
 
 .leaflet-bar a:hover {

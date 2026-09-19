@@ -1,19 +1,34 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Shield, CheckCircle2, AlertTriangle, Clock, Filter, 
   MapPin, Phone, UserCheck, MessageSquare, Plus, ChevronRight, 
   Check, ArrowUpRight, Search, FileText, CheckCheck, RefreshCw, 
   PhoneCall, ExternalLink, Calendar, HelpCircle, LogIn, Lock,
-  Send, UserPlus, ShieldAlert, ArrowRight, CheckSquare, X, KeyRound, Star
+  Send, UserPlus, Users, ShieldAlert, ArrowRight, CheckSquare, X, KeyRound, Star, Radio, ArrowDownUp,
+  Download
 } from 'lucide-react';
 import { DonkeyCase, CaseStatus, UserProfile, ActionLog, CaseResolution } from '../types';
 import { CATEGORY_INFO, KITUI_SUB_COUNTIES, INITIAL_OFFICERS, INITIAL_PRIMARY_USERS, ALL_PRELOADED_USERS } from '../data/mockData';
 import { exportCaseDossierToDrive } from '../services/googleDriveService';
 import { hasValidGoogleToken, googleSignIn } from '../services/firebaseAuth';
+import { exportSingleCasePDF } from '../services/pdfReportService';
+import { GeneralReportModal } from './GeneralReportModal';
+import { 
+  getProximityAllocationRecommendation, 
+  calculateDistanceKm, 
+  formatDistance, 
+  getOfficerCoordinates 
+} from '../services/locationService';
+import { UserManagementView } from './UserManagementView';
+import { sortCasesLatestFirst, formatReportedDateTime, formatReportedRelative, formatReportedDate } from '../utils/dateUtils';
 
 interface SuperUserDashboardProps {
   cases: DonkeyCase[];
   currentUser: UserProfile | null;
+  allUsers?: UserProfile[];
+  onAddUser?: (newUser: UserProfile) => Promise<void>;
+  onDeleteUser?: (userId: string, userPhone?: string) => Promise<void>;
+  onRefreshUsers?: () => void;
   onUpdateCaseStatus: (caseId: string, status: CaseStatus, resolutionNotes?: string) => void;
   onAddActionLog: (caseId: string, log: Omit<ActionLog, 'id' | 'timestamp'>) => void;
   onEscalateCase?: (caseId: string, officerName: string, officerRole: string, instructions: string) => void;
@@ -22,11 +37,16 @@ interface SuperUserDashboardProps {
   onOpenAuthModal: () => void;
   onOpenChangePasswordModal?: () => void;
   onOpenDriveModal?: () => void;
+  onNavigateToRadarMap?: () => void;
 }
 
 export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
   cases,
   currentUser,
+  allUsers = [],
+  onAddUser,
+  onDeleteUser,
+  onRefreshUsers,
   onUpdateCaseStatus,
   onAddActionLog,
   onEscalateCase,
@@ -35,8 +55,15 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
   onOpenAuthModal,
   onOpenChangePasswordModal,
   onOpenDriveModal,
+  onNavigateToRadarMap,
 }) => {
-  const isSuperUser = currentUser?.role === 'super_user';
+  const isSuperUser = 
+    currentUser?.role === 'super_user' || 
+    currentUser?.role === 'super_admin' || 
+    currentUser?.role === 'chief_officer' || 
+    currentUser?.role === 'field_officer';
+  const isSuperAdmin = currentUser?.role === 'super_admin';
+  const [adminSection, setAdminSection] = useState<'cases' | 'users'>('cases');
 
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(cases[0]?.id || null);
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -68,6 +95,27 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
   const [driveExportSuccess, setDriveExportSuccess] = useState<string | null>(null);
   const [driveExportError, setDriveExportError] = useState<string | null>(null);
 
+  // PDF Export state
+  const [isExportingPDF, setIsExportingPDF] = useState(false);
+  const [isGeneralReportModalOpen, setIsGeneralReportModalOpen] = useState(false);
+
+  const handleExportSelectedCaseToPDF = async (c: DonkeyCase) => {
+    setIsExportingPDF(true);
+    setDriveExportSuccess(null);
+    setDriveExportError(null);
+    try {
+      const { filename } = await exportSingleCasePDF(c, { autoDownload: true });
+      setDriveExportSuccess(`Case dossier exported! Downloaded "${filename}"`);
+      setTimeout(() => setDriveExportSuccess(null), 5000);
+    } catch (err: any) {
+      console.error('Failed to export PDF case report:', err);
+      setDriveExportError(err?.message || 'Failed to export case report PDF.');
+      setTimeout(() => setDriveExportError(null), 5000);
+    } finally {
+      setIsExportingPDF(false);
+    }
+  };
+
   const handleExportSelectedCaseToDrive = async (c: DonkeyCase) => {
     setIsExportingDrive(true);
     setDriveExportSuccess(null);
@@ -88,20 +136,24 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
     }
   };
 
-  // Filter reported cases
-  const filteredCases = cases.filter((c) => {
-    if (filterStatus !== 'all' && c.status !== filterStatus) return false;
-    if (filterCategory !== 'all' && c.category !== filterCategory) return false;
-    if (filterSubCounty !== 'all' && c.location.subCounty !== filterSubCounty) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      const matchTitle = c.title.toLowerCase().includes(q);
-      const matchLoc = `${c.location.subCounty} ${c.location.ward} ${c.location.village} ${c.location.landmark}`.toLowerCase().includes(q);
-      const matchCode = c.trackingCode.toLowerCase().includes(q);
-      if (!matchTitle && !matchLoc && !matchCode) return false;
-    }
-    return true;
-  });
+  // Filter reported cases and arrange them strictly from latest to oldest
+  const filteredCases = useMemo(() => {
+    const list = cases.filter((c) => {
+      if (!c) return false;
+      if (filterStatus !== 'all' && c.status !== filterStatus) return false;
+      if (filterCategory !== 'all' && c.category !== filterCategory) return false;
+      if (filterSubCounty !== 'all' && c.location?.subCounty !== filterSubCounty) return false;
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase();
+        const matchTitle = (c.title || '').toLowerCase().includes(q);
+        const matchLoc = `${c.location?.subCounty || ''} ${c.location?.ward || ''} ${c.location?.village || ''} ${c.location?.landmark || ''}`.toLowerCase().includes(q);
+        const matchCode = (c.trackingCode || '').toLowerCase().includes(q);
+        if (!matchTitle && !matchLoc && !matchCode) return false;
+      }
+      return true;
+    });
+    return sortCasesLatestFirst(list);
+  }, [cases, filterStatus, filterCategory, filterSubCounty, searchQuery]);
 
   const selectedCase = cases.find((c) => c.id === selectedCaseId) || filteredCases[0] || null;
 
@@ -144,7 +196,7 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
   // Open Escalation
   const handleOpenEscalate = (c: DonkeyCase) => {
     setSelectedCaseId(c.id);
-    setEscalationInstructions(`URGENT: Please dispatch team to ${c.location.village}, ${c.location.subCounty} to intercept and investigate.`);
+    setEscalationInstructions(`URGENT: Please dispatch team to ${c.location?.village || 'the area'}, ${c.location?.subCounty || 'Kitui'} to intercept and investigate.`);
     setIsEscalateModalOpen(true);
   };
 
@@ -300,6 +352,16 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
               </button>
             )}
 
+            <button
+              id="btn-officer-general-report"
+              onClick={() => setIsGeneralReportModalOpen(true)}
+              className="bg-red-950/80 hover:bg-red-900 text-red-200 hover:text-white font-bold text-xs px-3 py-2 rounded-xl shadow-xs active:scale-95 transition-all flex items-center gap-1.5 border border-red-800 cursor-pointer"
+              title="Export Weekly, Monthly, Quarterly or Annual Case Audit Report (PDF)"
+            >
+              <FileText className="w-3.5 h-3.5 text-red-400" />
+              <span>Audit Report (PDF)</span>
+            </button>
+
             {onOpenChangePasswordModal && (
               <button
                 id="btn-change-officer-password"
@@ -311,6 +373,19 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
                 <span>Change PIN</span>
               </button>
             )}
+
+            {onNavigateToRadarMap && (
+              <button
+                id="btn-officer-radar-map"
+                onClick={onNavigateToRadarMap}
+                className="bg-amber-950/60 hover:bg-amber-900/80 text-amber-300 font-bold text-xs px-3 py-2 rounded-xl shadow-xs active:scale-95 transition-all flex items-center gap-1.5 border border-amber-800"
+                title="View Nearby Super Users & Proximity Radar"
+              >
+                <Radio className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                <span>Nearby Responders</span>
+              </button>
+            )}
+
             <button
               onClick={onOpenReportModal}
               className="bg-[#991B1B] hover:bg-[#7F1D1D] text-white font-bold text-xs px-3.5 py-2 rounded-xl shadow-xs active:scale-95 transition-all flex items-center gap-1.5 border border-red-800"
@@ -342,8 +417,46 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
         </div>
       </div>
 
-      {/* Main Content Area: Case List & Resolution View */}
-      {cases.length === 0 ? (
+      {/* Super Admin Section Switcher: Cases vs User Accounts */}
+      {isSuperAdmin && (
+        <div className="flex items-center gap-2 p-1.5 bg-zinc-900 rounded-2xl border border-zinc-800 shadow-xs">
+          <button
+            id="tab-super-admin-cases"
+            onClick={() => setAdminSection('cases')}
+            className={`flex-1 py-2 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              adminSection === 'cases' 
+                ? 'bg-white text-zinc-950 shadow-xs' 
+                : 'text-zinc-400 hover:text-white'
+            }`}
+          >
+            <FileText className="w-4 h-4" />
+            <span>Incident Cases & Triage ({cases.length})</span>
+          </button>
+          <button
+            id="tab-super-admin-users"
+            onClick={() => setAdminSection('users')}
+            className={`flex-1 py-2 px-3 rounded-xl text-xs sm:text-sm font-bold transition-all flex items-center justify-center gap-2 cursor-pointer ${
+              adminSection === 'users' 
+                ? 'bg-purple-600 text-white shadow-xs' 
+                : 'text-zinc-400 hover:text-white'
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>User Accounts & Firebase ({allUsers.length})</span>
+          </button>
+        </div>
+      )}
+
+      {/* Main Content Area: Case List & Resolution View OR User Accounts Management */}
+      {isSuperAdmin && adminSection === 'users' ? (
+        <UserManagementView
+          currentUser={currentUser!}
+          allUsers={allUsers}
+          onAddUser={onAddUser || (async () => {})}
+          onDeleteUser={onDeleteUser || (async () => {})}
+          onRefreshUsers={onRefreshUsers}
+        />
+      ) : cases.length === 0 ? (
         <div className="bg-white rounded-3xl border border-zinc-200 p-8 text-center space-y-3 shadow-2xs">
           <div className="w-12 h-12 rounded-2xl bg-red-50 text-[#991B1B] flex items-center justify-center mx-auto border border-red-200">
             <FileText className="w-6 h-6" />
@@ -406,6 +519,15 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
               </div>
             </div>
 
+            {/* Sorting indicator & Case Count */}
+            <div className="flex items-center justify-between px-1 py-1 text-[11px] text-zinc-500 font-medium">
+              <span>Showing {filteredCases.length} case{filteredCases.length === 1 ? '' : 's'}</span>
+              <span className="flex items-center gap-1 font-bold text-zinc-700 bg-zinc-100 px-2 py-0.5 rounded-lg border border-zinc-200">
+                <ArrowDownUp className="w-3 h-3 text-[#991B1B]" />
+                <span>Latest to Oldest</span>
+              </span>
+            </div>
+
             {/* Cases List */}
             <div className="space-y-2 max-h-[600px] overflow-y-auto pr-1">
               {filteredCases.map((c) => {
@@ -452,10 +574,23 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
                       {c.title}
                     </h4>
 
+                    {/* Date Reported Indicator */}
+                    <div className="flex items-center justify-between text-[10px] text-zinc-600 mt-1.5 pt-1.5 border-t border-zinc-100">
+                      <span className="flex items-center gap-1 font-semibold text-zinc-700 bg-zinc-50 px-1.5 py-0.5 rounded border border-zinc-200/60 truncate">
+                        <Calendar className="w-3 h-3 text-[#991B1B] shrink-0" />
+                        <span>Reported: <strong className="text-zinc-900 font-bold">{formatReportedDateTime(c.reportedAt)}</strong></span>
+                      </span>
+                      {formatReportedRelative(c.reportedAt) && (
+                        <span className="text-[9px] font-bold text-zinc-400 shrink-0 ml-1">
+                          {formatReportedRelative(c.reportedAt)}
+                        </span>
+                      )}
+                    </div>
+
                     <div className="flex items-center justify-between text-[11px] text-zinc-500 mt-1 pt-1 border-t border-zinc-100">
                       <span className="flex items-center gap-1 truncate max-w-[190px]">
                         <MapPin className="w-3 h-3 text-[#991B1B] shrink-0" />
-                        {c.location.subCounty}, {c.location.village}
+                        {c.location?.subCounty || 'Kitui'}{c.location?.village ? `, ${c.location.village}` : ''}
                       </span>
                       <span className="font-bold text-zinc-900">
                         {c.donkeysCount} Donkey(s)
@@ -492,15 +627,41 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
                     <h3 className="text-sm sm:text-base font-black text-zinc-950">
                       {selectedCase.title}
                     </h3>
+
+                    {/* Prominent Date Reported Indicator */}
+                    <div className="inline-flex items-center gap-1.5 text-xs text-zinc-700 bg-zinc-100/90 border border-zinc-200 px-2.5 py-1 rounded-xl mt-1.5">
+                      <Calendar className="w-3.5 h-3.5 text-[#991B1B] shrink-0" />
+                      <span>Date Reported: <strong className="text-zinc-950 font-black">{formatReportedDateTime(selectedCase.reportedAt)}</strong></span>
+                      {formatReportedRelative(selectedCase.reportedAt) && (
+                        <span className="text-[10px] font-semibold text-zinc-500 bg-white px-1.5 py-0.2 rounded border border-zinc-200 ml-1">
+                          {formatReportedRelative(selectedCase.reportedAt)}
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Super User Action Buttons & Drive Export */}
                   <div className="flex items-center gap-2 shrink-0 flex-wrap">
                     <button
+                      id="export-case-pdf-btn"
+                      onClick={() => handleExportSelectedCaseToPDF(selectedCase)}
+                      disabled={isExportingPDF}
+                      className="bg-red-700 hover:bg-red-800 text-white font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50 cursor-pointer shadow-2xs"
+                      title="Export Official PDF Incident Dossier"
+                    >
+                      {isExportingPDF ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
+                      ) : (
+                        <Download className="w-3.5 h-3.5 text-white" />
+                      )}
+                      <span>{isExportingPDF ? 'Exporting...' : 'Export PDF'}</span>
+                    </button>
+
+                    <button
                       id="export-case-drive-btn"
                       onClick={() => handleExportSelectedCaseToDrive(selectedCase)}
                       disabled={isExportingDrive}
-                      className="bg-zinc-100 hover:bg-zinc-200 text-zinc-900 border border-zinc-300 font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50"
+                      className="bg-zinc-100 hover:bg-zinc-200 text-zinc-900 border border-zinc-300 font-bold px-3 py-1.5 rounded-xl text-xs flex items-center gap-1.5 transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
                       title="Export Case Dossier Document to Google Drive Evidence Vault"
                     >
                       <svg viewBox="0 0 87.3 78" className="w-3.5 h-3.5 shrink-0">
@@ -571,12 +732,12 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
                         Location Details
                       </div>
                       <div className="font-bold text-zinc-900">
-                        {selectedCase.location.village}, {selectedCase.location.ward}
+                        {selectedCase.location?.village || 'Area'}, {selectedCase.location?.ward || 'Ward'}
                       </div>
                       <div className="text-zinc-500 text-[11px]">
-                        Sub-County: {selectedCase.location.subCounty}
+                        Sub-County: {selectedCase.location?.subCounty || 'Kitui'}
                       </div>
-                      {selectedCase.location.coordinates && (
+                      {selectedCase.location?.coordinates && (
                         <div className="text-[10px] font-mono text-zinc-600 mt-1 bg-white p-1 rounded border border-zinc-200">
                           GPS: {selectedCase.location.coordinates.lat.toFixed(5)}, {selectedCase.location.coordinates.lng.toFixed(5)}
                         </div>
@@ -603,20 +764,65 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
                     </div>
                   </div>
 
-                  {/* Assigned Officer / Escalation info if present */}
-                  {selectedCase.assignedOfficer && (
-                    <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-3 flex items-center justify-between text-xs">
-                      <div>
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-amber-900">
-                          Assigned Officer / Unit
+                  {/* Emergency Incident Alert Banner if emergency report */}
+                  {selectedCase.isEmergency && (
+                    <div className="bg-red-50 border border-red-300 rounded-2xl p-3 text-xs text-red-950 flex items-start gap-2.5 shadow-2xs">
+                      <div className="w-8 h-8 rounded-xl bg-red-600 text-white flex items-center justify-center font-black text-xs shrink-0 shadow-xs">
+                        SOS
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-extrabold text-red-900 uppercase text-[10px] tracking-wide flex items-center gap-1.5">
+                          <span>Emergency Quick Report</span>
+                          <span className="px-1.5 py-0.2 rounded bg-red-200 text-red-950 text-[9px] font-black">
+                            HIGH PRIORITY
+                          </span>
                         </div>
-                        <div className="font-bold text-zinc-900">
-                          {selectedCase.assignedOfficer.name} ({selectedCase.assignedOfficer.title})
-                        </div>
-                        <div className="text-[11px] text-zinc-600">
-                          {selectedCase.assignedOfficer.department} • {selectedCase.assignedOfficer.phone}
+                        <div className="text-[11px] text-red-900 mt-0.5">
+                          Mandatory Contact Phone: <a href={`tel:${selectedCase.emergencyPhone}`} className="font-bold underline text-red-950">{selectedCase.emergencyPhone}</a>
                         </div>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Assigned Officer / Escalation info if present */}
+                  {selectedCase.assignedOfficer && (
+                    <div className="bg-amber-50/80 border border-amber-200 rounded-2xl p-3 text-xs space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-amber-900">
+                            Assigned Officer / Unit
+                          </div>
+                          <div className="font-bold text-zinc-900">
+                            {selectedCase.assignedOfficer.name} ({selectedCase.assignedOfficer.title})
+                          </div>
+                          <div className="text-[11px] text-zinc-600">
+                            {selectedCase.assignedOfficer.department} • {selectedCase.assignedOfficer.phone}
+                          </div>
+                        </div>
+                        {selectedCase.aiAllocation && (
+                          <span className="px-2 py-0.5 bg-indigo-100 text-indigo-900 border border-indigo-300 text-[10px] font-black rounded-full uppercase">
+                            AI Allocated
+                          </span>
+                        )}
+                      </div>
+
+                      {/* AI Allocation Breakdown */}
+                      {selectedCase.aiAllocation && (
+                        <div className="bg-white/80 p-2.5 rounded-xl border border-amber-200 text-[11px] text-zinc-700 space-y-1">
+                          <div className="flex items-center justify-between text-[10px] font-bold text-zinc-900">
+                            <span className="text-indigo-900 flex items-center gap-1">
+                              <span>Proximity Score:</span>
+                              <strong className="text-indigo-700 font-black">{selectedCase.aiAllocation.proximityScore}/100</strong>
+                            </span>
+                            <span className="text-zinc-500">
+                              Distance: <strong>{selectedCase.aiAllocation.distanceKm} km</strong> • Response: ~<strong>{selectedCase.aiAllocation.estimatedResponseMinutes} mins</strong>
+                            </span>
+                          </div>
+                          <div className="text-[10px] text-zinc-600 italic">
+                            Reason: {selectedCase.aiAllocation.allocationReason}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -846,7 +1052,7 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
                     Escalate Case to Officer / Unit
                   </h3>
                   <p className="text-[11px] text-zinc-500">
-                    Case #{selectedCase.trackingCode} • {selectedCase.location.subCounty}
+                    Case #{selectedCase.trackingCode} • {selectedCase.location?.subCounty || 'Kitui'}
                   </p>
                 </div>
               </div>
@@ -856,6 +1062,43 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
             </div>
 
             <form onSubmit={handleConfirmEscalate} className="space-y-3">
+              {/* Proximity-Based Super User Recommendation */}
+              {(() => {
+                const proximityRec = selectedCase?.location ? getProximityAllocationRecommendation(selectedCase.location, INITIAL_OFFICERS) : null;
+                if (!proximityRec) return null;
+
+                return (
+                  <div className="bg-amber-50/80 border border-amber-300 rounded-2xl p-3 text-xs space-y-2 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-amber-900 flex items-center gap-1">
+                        <span>⚡ Proximity Recommendation</span>
+                      </span>
+                      <span className="bg-amber-200 text-amber-950 font-black px-2 py-0.5 rounded-full text-[10px]">
+                        {proximityRec.distanceFormatted} away
+                      </span>
+                    </div>
+                    <div className="text-zinc-900 font-black">
+                      {proximityRec.recommendedOfficer.name} <span className="text-[#991B1B] font-bold">({proximityRec.recommendedOfficer.roleTitle})</span>
+                    </div>
+                    <div className="text-[11px] text-zinc-600 leading-normal">
+                      {proximityRec.reason} • Est. response time: ~{proximityRec.estimatedResponseMins} mins
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedEscalateOfficerId(proximityRec.recommendedOfficer.id);
+                        setEscalationInstructions(
+                          `Priority Proximity Dispatch: Reported incident at ${selectedCase.location?.village || 'Scene'} (${selectedCase.location?.subCounty || 'Kitui'}) is ~${proximityRec.distanceFormatted} from your post. Proceed immediately to investigate and secure the scene.`
+                        );
+                      }}
+                      className="w-full bg-[#991B1B] hover:bg-[#7F1D1D] text-white font-bold py-1.5 px-3 rounded-xl text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-2xs"
+                    >
+                      <span>⚡ Auto-Select Closest Officer ({proximityRec.distanceFormatted})</span>
+                    </button>
+                  </div>
+                );
+              })()}
+
               <div>
                 <label className="block text-[11px] font-bold text-zinc-700 mb-1">
                   Select Recipient Officer / Unit *
@@ -865,12 +1108,17 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
                   onChange={(e) => setSelectedEscalateOfficerId(e.target.value)}
                   className="w-full px-3 py-2 text-xs bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-[#991B1B] text-zinc-900 font-medium"
                 >
-                  <optgroup label="⭐ Super Users (Command & Welfare Leads)">
-                    {INITIAL_OFFICERS.map((off) => (
-                      <option key={off.id} value={off.id}>
-                        {off.name} — {off.roleTitle} ({off.phone})
-                      </option>
-                    ))}
+                  <optgroup label="⭐ Super Users (Ranked by Proximity to Incident)">
+                    {INITIAL_OFFICERS.map((off) => {
+                      const offCoords = getOfficerCoordinates(off);
+                      const caseCoords = selectedCase.location?.coordinates || { lat: -1.3688, lng: 38.0108 };
+                      const d = calculateDistanceKm(caseCoords.lat, caseCoords.lng, offCoords.lat, offCoords.lng);
+                      return (
+                        <option key={off.id} value={off.id}>
+                          {off.name} — {off.roleTitle} [{formatDistance(d)} from scene]
+                        </option>
+                      );
+                    })}
                   </optgroup>
                   <optgroup label="📍 Local Chiefs & Village Elders (25 Primary Users)">
                     {INITIAL_PRIMARY_USERS.map((user) => (
@@ -936,6 +1184,13 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
           </div>
         </div>
       )}
+
+      {/* General Report Export Modal */}
+      <GeneralReportModal
+        isOpen={isGeneralReportModalOpen}
+        onClose={() => setIsGeneralReportModalOpen(false)}
+        cases={cases}
+      />
     </div>
   );
 };

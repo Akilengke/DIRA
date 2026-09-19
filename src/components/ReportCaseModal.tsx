@@ -3,11 +3,14 @@ import {
   X, Camera, MapPin, AlertTriangle, ShieldCheck, 
   Upload, ChevronRight, CheckCircle2, PhoneCall, 
   Trash2, ShieldAlert, Navigation, EyeOff, Plus, RefreshCw, Radio,
-  Skull, Truck, HeartCrack
+  Skull, Truck, HeartCrack, Mic, Sparkles
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { CaseCategory, CaseUrgency, DonkeyCase, LocationData, CasePhoto, UserProfile } from '../types';
-import { CATEGORY_INFO, KITUI_SUB_COUNTIES, EMERGENCY_HOTLINE, HOTLINE_DISPLAY, SUB_COUNTY_COORDINATES } from '../data/mockData';
+import { CATEGORY_INFO, KITUI_SUB_COUNTIES, EMERGENCY_HOTLINE, HOTLINE_DISPLAY, SUB_COUNTY_COORDINATES, INITIAL_OFFICERS } from '../data/mockData';
+import { getProximityAllocationRecommendation, backgroundLocationTracker } from '../services/locationService';
+import { allocateCaseWithAI } from '../services/aiAllocationService';
+import { VoiceDictationButton } from './VoiceDictationButton';
 
 interface ReportCaseModalProps {
   isOpen: boolean;
@@ -65,49 +68,55 @@ export const ReportCaseModal: React.FC<ReportCaseModalProps> = ({
   const [isLocating, setIsLocating] = useState(false);
   const [gpsStatusMessage, setGpsStatusMessage] = useState<string>('Detecting GPS location...');
 
-  // Auto-acquire Phone GPS on Modal Open
+  // Auto-acquire Phone GPS and subscribe to live movement updates while Modal is open
   useEffect(() => {
     if (!isOpen) return;
 
-    const autoFetchPhoneLocation = () => {
-      setIsLocating(true);
-      setGpsStatusMessage('Acquiring phone GPS coordinates...');
+    setIsLocating(true);
+    setGpsStatusMessage('Acquiring real-time GPS coordinates...');
 
-      if ('geolocation' in navigator) {
-        navigator.geolocation.getCurrentPosition(
-          (pos) => {
-            const lat = Number(pos.coords.latitude.toFixed(5));
-            const lng = Number(pos.coords.longitude.toFixed(5));
-            setCoordinates({ lat, lng });
-            setIsLocating(false);
-            setGpsStatusMessage(`GPS Locked: ${lat}, ${lng} (±${Math.round(pos.coords.accuracy || 10)}m accuracy)`);
+    // Subscribe to live device movement updates
+    const unsubscribe = backgroundLocationTracker.subscribe((coords, accuracy) => {
+      const lat = Number(coords.lat.toFixed(5));
+      const lng = Number(coords.lng.toFixed(5));
+      setCoordinates({ lat, lng });
+      setIsLocating(false);
+      setGpsStatusMessage(`GPS Active: ${lat}, ${lng} (±${Math.round(accuracy || 10)}m accuracy)`);
 
-            // If coordinates are in/near Kitui, auto-match sub-county
-            const detectedSubCounty = findClosestSubCounty(lat, lng);
-            setSubCounty(detectedSubCounty);
-            const cfg = KITUI_SUB_COUNTIES.find((sc) => sc.name === detectedSubCounty);
-            if (cfg && cfg.wards.length > 0) {
-              setWard(cfg.wards[0]);
-            }
-          },
-          (err) => {
-            console.warn('Geolocation failed or permission denied, using default Kitui Central reference:', err);
-            // Default reference within Kitui
-            const defaultCoords = { lat: -1.3688, lng: 38.0108 };
-            setCoordinates(defaultCoords);
-            setIsLocating(false);
-            setGpsStatusMessage('Using Kitui Central location reference');
-          },
-          { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
-        );
-      } else {
-        setCoordinates({ lat: -1.3688, lng: 38.0108 });
-        setIsLocating(false);
-        setGpsStatusMessage('Geolocation not supported, using Kitui base');
-      }
+      // If coordinates are in/near Kitui, auto-match sub-county if not already set
+      setSubCounty((prevSc) => {
+        if (!prevSc || prevSc === 'Kitui Central') {
+          const detectedSubCounty = findClosestSubCounty(lat, lng);
+          const cfg = KITUI_SUB_COUNTIES.find((sc) => sc.name === detectedSubCounty);
+          if (cfg && cfg.wards.length > 0) {
+            setWard(cfg.wards[0]);
+          }
+          return detectedSubCounty;
+        }
+        return prevSc;
+      });
+    });
+
+    // Also trigger immediate one-time fix with zero cache
+    if ('geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          const lat = Number(pos.coords.latitude.toFixed(5));
+          const lng = Number(pos.coords.longitude.toFixed(5));
+          setCoordinates({ lat, lng });
+          setIsLocating(false);
+          setGpsStatusMessage(`GPS Locked: ${lat}, ${lng} (±${Math.round(pos.coords.accuracy || 10)}m accuracy)`);
+        },
+        (err) => {
+          console.warn('Geolocation notice:', err.message);
+        },
+        { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+      );
+    }
+
+    return () => {
+      unsubscribe();
     };
-
-    autoFetchPhoneLocation();
   }, [isOpen]);
 
   // Suspects
@@ -138,14 +147,15 @@ export const ReportCaseModal: React.FC<ReportCaseModalProps> = ({
 
   const handleFetchCurrentLocation = () => {
     setIsLocating(true);
+    setGpsStatusMessage('Acquiring fresh real-time GPS coordinates...');
     if ('geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          setCoordinates({
-            lat: Number(pos.coords.latitude.toFixed(5)),
-            lng: Number(pos.coords.longitude.toFixed(5)),
-          });
+          const lat = Number(pos.coords.latitude.toFixed(5));
+          const lng = Number(pos.coords.longitude.toFixed(5));
+          setCoordinates({ lat, lng });
           setIsLocating(false);
+          setGpsStatusMessage(`GPS Locked: ${lat}, ${lng} (±${Math.round(pos.coords.accuracy || 10)}m accuracy)`);
         },
         () => {
           setCoordinates({
@@ -153,8 +163,9 @@ export const ReportCaseModal: React.FC<ReportCaseModalProps> = ({
             lng: 38.0108,
           });
           setIsLocating(false);
+          setGpsStatusMessage('Using Kitui Central location reference');
         },
-        { timeout: 8000 }
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 }
       );
     } else {
       setCoordinates({
@@ -162,6 +173,7 @@ export const ReportCaseModal: React.FC<ReportCaseModalProps> = ({
         lng: 38.0108,
       });
       setIsLocating(false);
+      setGpsStatusMessage('Geolocation not supported, using Kitui base');
     }
   };
 
@@ -227,6 +239,18 @@ export const ReportCaseModal: React.FC<ReportCaseModalProps> = ({
       coordinates: finalCoordinates,
     };
 
+    const aiResult = allocateCaseWithAI(
+      {
+        category,
+        urgency,
+        title: title.trim() || `${CATEGORY_INFO[category].label} in ${village || ward}`,
+        description: description.trim(),
+        location,
+        donkeysCount: Number(donkeysCount) || 1,
+      },
+      INITIAL_OFFICERS
+    );
+
     const newCasePayload: Omit<DonkeyCase, 'id' | 'trackingCode' | 'reportedAt' | 'status' | 'actionLogs'> = {
       category,
       title: title.trim() || `${CATEGORY_INFO[category].label} in ${village || ward}`,
@@ -238,6 +262,14 @@ export const ReportCaseModal: React.FC<ReportCaseModalProps> = ({
       reporterUserPhone: currentUser?.phone || reporterPhone.trim() || undefined,
       location,
       photos,
+      assignedOfficer: {
+        id: aiResult.allocatedOfficer.id,
+        name: aiResult.allocatedOfficer.name,
+        title: aiResult.allocatedOfficer.roleTitle || aiResult.allocatedOfficer.designation || 'Super User',
+        department: aiResult.allocatedOfficer.department || 'Caritas Command Desk',
+        phone: aiResult.allocatedOfficer.phone,
+      },
+      aiAllocation: aiResult.metadata,
       suspectDetails: {
         description: suspectDescription.trim() || undefined,
         vehiclePlate: vehiclePlate.trim() || undefined,
@@ -281,7 +313,7 @@ export const ReportCaseModal: React.FC<ReportCaseModalProps> = ({
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
       <div 
-        className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl border border-zinc-200 overflow-hidden flex flex-col max-h-[92vh] sm:max-h-[85vh]"
+        className="w-full max-w-lg bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl border border-zinc-200 overflow-hidden flex flex-col max-h-[94dvh] sm:max-h-[88dvh]"
       >
         {/* Modal Top Header with Brick Red / Black Branding */}
         <div className="bg-gradient-to-r from-[#991B1B] via-[#7F1D1D] to-[#991B1B] text-white px-5 py-4 flex items-center justify-between shrink-0 border-b border-red-900/50">
@@ -291,7 +323,7 @@ export const ReportCaseModal: React.FC<ReportCaseModalProps> = ({
             </div>
             <div>
               <div className="text-[10px] font-bold uppercase tracking-widest text-red-200">
-                Caritas Kitui • DIRA (Kaa Rada!)
+                DIRA (Kaa Rada!) • Incident Report
               </div>
               <h2 className="text-base font-bold font-display text-white">
                 Report Donkey Welfare Incident
@@ -518,17 +550,46 @@ export const ReportCaseModal: React.FC<ReportCaseModalProps> = ({
                     </div>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-bold text-zinc-700 mb-1">
-                      Incident Details * (Maelezo Kamili)
-                    </label>
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-bold text-zinc-700">
+                        Incident Details * (Maelezo Kamili)
+                      </label>
+                      {description.trim() && (
+                        <button
+                          type="button"
+                          onClick={() => setDescription('')}
+                          className="text-[11px] text-zinc-500 hover:text-red-700 font-medium cursor-pointer"
+                        >
+                          Clear text
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Web Speech API Voice Dictation Button */}
+                    <VoiceDictationButton
+                      onTranscript={(text, mode) => {
+                        setDescription((prev) => {
+                          const combined = prev.trim() ? `${prev.trim()} ${text}` : text;
+                          if (!title.trim() && text.trim()) {
+                            const candidate = text.split('.')[0].slice(0, 60);
+                            setTitle(candidate);
+                          }
+                          return combined;
+                        });
+                      }}
+                      currentValue={description}
+                      fieldLabel="Incident Details"
+                      placeholderPrompt="Describe what happened verbally..."
+                    />
+
                     <textarea
                       id="case-description-input"
                       rows={3}
                       required
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
-                      placeholder="Describe what happened, visible injuries, marks, ear notches, or suspicious persons..."
+                      placeholder="Describe what happened, visible injuries, marks, ear notches, or suspicious persons (or use the voice button above)..."
                       className="w-full px-3 py-2 text-xs sm:text-sm bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-[#991B1B] text-zinc-900 outline-none leading-relaxed"
                     />
                   </div>
@@ -804,16 +865,28 @@ export const ReportCaseModal: React.FC<ReportCaseModalProps> = ({
                     </div>
 
                     <div>
-                      <label className="block text-[11px] font-semibold text-zinc-600 mb-1">
-                        Suspect Physical Descriptions
-                      </label>
-                      <input
-                        type="text"
-                        value={suspectDescription}
-                        onChange={(e) => setSuspectDescription(e.target.value)}
-                        placeholder="e.g. 2 men in blue gumboots with torch"
-                        className="w-full px-2.5 py-2 text-xs bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-[#991B1B] text-zinc-900 outline-none"
-                      />
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-[11px] font-semibold text-zinc-600">
+                          Suspect Physical Descriptions (Maelezo ya Washukiwa)
+                        </label>
+                      </div>
+                      <div className="space-y-1.5">
+                        <VoiceDictationButton
+                          onTranscript={(text) => {
+                            setSuspectDescription((prev) => (prev.trim() ? `${prev.trim()} ${text}` : text));
+                          }}
+                          currentValue={suspectDescription}
+                          fieldLabel="Suspects"
+                          placeholderPrompt="Describe suspects or vehicles..."
+                        />
+                        <input
+                          type="text"
+                          value={suspectDescription}
+                          onChange={(e) => setSuspectDescription(e.target.value)}
+                          placeholder="e.g. 2 men in blue gumboots with torch, or use voice dictation above"
+                          className="w-full px-2.5 py-2 text-xs bg-white border border-zinc-200 rounded-xl focus:ring-2 focus:ring-[#991B1B] text-zinc-900 outline-none"
+                        />
+                      </div>
                     </div>
                   </div>
 
@@ -927,12 +1000,40 @@ export const ReportCaseModal: React.FC<ReportCaseModalProps> = ({
                       <span className="text-zinc-500 font-medium">Photos</span>
                       <span className="font-bold text-zinc-950">{photos.length} item(s)</span>
                     </div>
+
+                    {/* Proximity Auto-Allocation Preview */}
+                    {(() => {
+                      const tempLoc: LocationData = {
+                        county,
+                        subCounty,
+                        ward,
+                        subLocation,
+                        village,
+                        landmark,
+                        coordinates: coordinates || SUB_COUNTY_COORDINATES[subCounty] || { lat: -1.3688, lng: 38.0108 },
+                      };
+                      const rec = getProximityAllocationRecommendation(tempLoc, INITIAL_OFFICERS);
+                      return (
+                        <div className="bg-amber-50 border border-amber-300 rounded-xl p-2.5 space-y-1 mt-2">
+                          <div className="flex items-center justify-between text-[10px] font-black uppercase text-amber-900">
+                            <span className="flex items-center gap-1">⚡ Auto-Dispatched Nearest Super User</span>
+                            <span className="bg-amber-200 text-amber-950 px-1.5 py-0.2 rounded font-mono font-bold">{rec.distanceFormatted} away</span>
+                          </div>
+                          <div className="text-xs font-bold text-zinc-900">
+                            {rec.recommendedOfficer.name} ({rec.recommendedOfficer.roleTitle})
+                          </div>
+                          <div className="text-[10px] text-zinc-500">
+                            {rec.reason} • Est. response: ~{rec.estimatedResponseMins} mins
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-950 text-xs flex items-start gap-2">
                     <AlertTriangle className="w-4 h-4 text-[#991B1B] shrink-0 mt-0.5" />
                     <span>
-                      By submitting, this report is immediately transmitted to Caritas Kitui welfare coordinators and local authorities.
+                      By submitting, this report is immediately transmitted to DIRA welfare coordinators and local authorities.
                     </span>
                   </div>
 

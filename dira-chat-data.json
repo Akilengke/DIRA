@@ -1,0 +1,10 @@
+[
+  {
+    "id": "test-1",
+    "senderId": "dev-1",
+    "senderName": "System Verification",
+    "channelId": "general",
+    "content": "Chat delivery verification",
+    "timestamp": "2026-09-17T12:09:15.000Z"
+  }
+]

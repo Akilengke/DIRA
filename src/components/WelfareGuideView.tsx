@@ -17,7 +17,7 @@ export const WelfareGuideView: React.FC = () => {
           Donkey Protection & Welfare Guidelines
         </h2>
         <p className="text-xs text-red-100">
-          Caritas Kitui community manual for working donkey rights under Kenyan law.
+          DIRA community manual for working donkey rights under Kenyan law.
         </p>
       </div>
 
@@ -89,7 +89,7 @@ export const WelfareGuideView: React.FC = () => {
             Need Direct Assistance?
           </div>
           <div className="text-lg font-bold font-display text-white">
-            Caritas Kitui Donkey Welfare Desk
+            DIRA Donkey Welfare Desk
           </div>
           <div className="text-xs text-red-100 font-mono">
             Toll-Free: {HOTLINE_DISPLAY}

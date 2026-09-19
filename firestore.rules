@@ -1,0 +1,48 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // DIRA Donkey Cases Collection
+    match /dira_cases/{caseId} {
+      // Community reporting allows public creation of reports
+      allow read, create: if true;
+      // Updates and deletions allowed for case management
+      allow update, delete: if true;
+    }
+
+    // DIRA Community & Officer Chat Messages Collection
+    match /dira_messages/{msgId} {
+      // Logged in community users and officers can exchange messages
+      allow read, create: if true;
+      allow update, delete: if true;
+    }
+
+    // DIRA Logged-In Devices Live Radar Tracking (All users can share & see each other's live location on map)
+    match /dira_logged_in_devices/{deviceId} {
+      allow read, write, delete: if true;
+    }
+
+    // DIRA Force Logouts Dispatched by Super Admin
+    match /dira_force_logouts/{logoutId} {
+      allow read, write, delete: if true;
+    }
+
+    // DIRA Active Voice & Video Calls for instant cross-device ringing
+    match /dira_calls/{callId} {
+      allow read, write, delete: if true;
+    }
+
+    // User Accounts Collections (Super Admin and user sign-ups stored in Firestore)
+    match /dira_users/{userId} {
+      allow read, write, delete: if true;
+    }
+
+    match /users/{userId} {
+      allow read, write, delete: if true;
+    }
+
+    // Default catch-all
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}

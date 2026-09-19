@@ -1,0 +1,13 @@
+{
+  "appId": "ke.or.caritas.kitui.dira",
+  "appName": "DIRA Donkey Response",
+  "webDir": "dist",
+  "bundledWebRuntime": false,
+  "server": {
+    "url": "https://ais-pre-lcxmwdpyoc256lycqd3ogb-642916903521.europe-west1.run.app",
+    "cleartext": true
+  },
+  "android": {
+    "allowMixedContent": true
+  }
+}

@@ -246,11 +246,11 @@ export async function exportCaseDossierToDrive(donkeyCase: DonkeyCase): Promise<
 ---
 
 ### Location Details
-- **County**: ${donkeyCase.location.county || 'Kitui County, Kenya'}
-- **Sub-County**: ${donkeyCase.location.subCounty}
-- **Ward / Area**: ${donkeyCase.location.ward || 'N/A'}
-- **Village / Landmark**: ${donkeyCase.location.village} (Landmark: ${donkeyCase.location.landmark || 'N/A'})
-- **GPS Coordinates**: ${donkeyCase.location.coordinates ? `Lat ${donkeyCase.location.coordinates.lat.toFixed(5)}, Lng ${donkeyCase.location.coordinates.lng.toFixed(5)}` : 'Coordinates not recorded'}
+- **County**: ${donkeyCase.location?.county || 'Kitui County, Kenya'}
+- **Sub-County**: ${donkeyCase.location?.subCounty || 'N/A'}
+- **Ward / Area**: ${donkeyCase.location?.ward || 'N/A'}
+- **Village / Landmark**: ${donkeyCase.location?.village || 'N/A'} (Landmark: ${donkeyCase.location?.landmark || 'N/A'})
+- **GPS Coordinates**: ${donkeyCase.location?.coordinates ? `Lat ${donkeyCase.location.coordinates.lat.toFixed(5)}, Lng ${donkeyCase.location.coordinates.lng.toFixed(5)}` : 'Coordinates not recorded'}
 
 ---
 
@@ -307,13 +307,51 @@ ${
 *Generated automatically by DIRA (Donkey Incident Reporting APP) for Caritas Kitui Donkey Welfare Program.*
 `;
 
-  const fileName = `Dossier_${donkeyCase.id}_${donkeyCase.location.subCounty.replace(/\s+/g, '_')}.md`;
+  const fileName = `Dossier_${donkeyCase.id}_${(donkeyCase.location?.subCounty || 'Kitui').replace(/\s+/g, '_')}.md`;
 
   return uploadFileToDrive({
     name: fileName,
     mimeType: 'text/markdown',
     content: markdownContent,
     folderId: caseDossiersFolderId,
+  });
+}
+
+/**
+ * Export a PDF blob directly to Google Drive in the Evidence Vault
+ */
+export async function exportPDFToDrive(
+  pdfBlob: Blob,
+  fileName: string,
+  folderName: string = 'Incident Audit Reports'
+): Promise<DriveFileItem> {
+  const masterVaultId = await getDiraVaultFolderId();
+  const reportFolderId = await getOrCreateFolder(folderName, masterVaultId);
+
+  return uploadFileToDrive({
+    name: fileName,
+    mimeType: 'application/pdf',
+    content: pdfBlob,
+    folderId: reportFolderId,
+  });
+}
+
+/**
+ * Export a text or markdown report directly to Google Drive
+ */
+export async function exportTextFileToDrive(
+  content: string,
+  fileName: string,
+  folderName: string = 'Incident Audit Reports'
+): Promise<DriveFileItem> {
+  const masterVaultId = await getDiraVaultFolderId();
+  const reportFolderId = await getOrCreateFolder(folderName, masterVaultId);
+
+  return uploadFileToDrive({
+    name: fileName,
+    mimeType: 'text/markdown',
+    content,
+    folderId: reportFolderId,
   });
 }
 
