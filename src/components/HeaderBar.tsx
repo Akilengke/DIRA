@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, LogOut, MessageSquare } from 'lucide-react';
+import { User, LogOut, MessageSquare, ShieldAlert } from 'lucide-react';
 import { UserProfile } from '../types';
 import { DiraLogo } from './DiraLogo';
 
@@ -16,6 +16,8 @@ interface HeaderBarProps {
   pendingCasesCount?: number;
   unreadNotificationsCount?: number;
   unreadChatCount?: number;
+  allocatedCasesCount?: number;
+  onNavigateToAllocatedCases?: () => void;
 }
 
 export const HeaderBar: React.FC<HeaderBarProps> = ({
@@ -24,7 +26,15 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
   onLogout,
   onNavigateToChat,
   unreadChatCount = 0,
+  allocatedCasesCount = 0,
+  onNavigateToAllocatedCases,
 }) => {
+  const isSuperUser = 
+    currentUser?.role === 'super_user' || 
+    currentUser?.role === 'super_admin' || 
+    currentUser?.role === 'chief_officer' || 
+    currentUser?.role === 'field_officer';
+
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-zinc-200 shadow-2xs select-none pt-safe w-full max-w-full overflow-hidden">
       <div className="max-w-4xl mx-auto px-3 sm:px-5 py-2.5 flex items-center justify-between gap-2">
@@ -35,6 +45,23 @@ export const HeaderBar: React.FC<HeaderBarProps> = ({
 
         {/* User Controls & Chat Quick Action */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Super User Allocated Cases Header Badge */}
+          {isSuperUser && onNavigateToAllocatedCases && allocatedCasesCount > 0 && (
+            <button
+              id="header-allocated-cases-btn"
+              onClick={onNavigateToAllocatedCases}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 min-h-[40px] rounded-xl text-xs font-bold text-red-950 bg-red-100 hover:bg-red-200 border border-red-300 transition-all active:scale-95 touch-manipulation cursor-pointer"
+              title="Cases Allocated for Immediate Action"
+              aria-label="Allocated Cases"
+            >
+              <ShieldAlert className="w-4 h-4 text-red-700 animate-pulse shrink-0" />
+              <span className="hidden sm:inline font-bold">Allocated:</span>
+              <span className="px-1.5 py-0.2 rounded-full bg-red-700 text-white text-[10px] font-black">
+                {allocatedCasesCount}
+              </span>
+            </button>
+          )}
+
           {onNavigateToChat && (
             <button
               id="header-chat-btn"

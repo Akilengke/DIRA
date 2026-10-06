@@ -143,15 +143,40 @@ export function getStoredLoggedInDevices(): LoggedInDevice[] {
       }
     }
 
-    // Persist cleansed list back so sample devices are deleted from disk
-    if (raw) {
-      saveLoggedInDevices(parsed);
-    }
-
+    // Sample devices filtered out from in-memory parsed list
     return parsed;
   } catch (err) {
     console.warn('Could not read stored logged in devices:', err);
     return [];
+  }
+}
+
+// In-memory subscribers for in-tab updates
+const inMemoryDeviceSubscribers = new Set<(devices: LoggedInDevice[]) => void>();
+
+function notifyDeviceSubscribers(devices: LoggedInDevice[]) {
+  const sanitized = (devices || []).filter((d) => d && !isSampleDevice(d) && d.isOnline !== false);
+  // Defer notification using queueMicrotask so it NEVER executes synchronously during a React render cycle
+  if (typeof queueMicrotask === 'function') {
+    queueMicrotask(() => {
+      inMemoryDeviceSubscribers.forEach((cb) => {
+        try {
+          cb(sanitized);
+        } catch (e) {
+          console.warn('Error in device subscriber callback:', e);
+        }
+      });
+    });
+  } else {
+    Promise.resolve().then(() => {
+      inMemoryDeviceSubscribers.forEach((cb) => {
+        try {
+          cb(sanitized);
+        } catch (e) {
+          console.warn('Error in device subscriber callback:', e);
+        }
+      });
+    });
   }
 }
 
@@ -162,7 +187,13 @@ export function saveLoggedInDevices(devices: LoggedInDevice[]): void {
   if (typeof window === 'undefined') return;
   try {
     const realDevices = (devices || []).filter((d) => d && !isSampleDevice(d));
-    localStorage.setItem(STORAGE_KEY_LOGGED_IN_DEVICES, JSON.stringify(realDevices));
+    const serialized = JSON.stringify(realDevices);
+    const existing = localStorage.getItem(STORAGE_KEY_LOGGED_IN_DEVICES);
+    // Only write and notify subscribers if data actually changed
+    if (existing !== serialized) {
+      localStorage.setItem(STORAGE_KEY_LOGGED_IN_DEVICES, serialized);
+      notifyDeviceSubscribers(realDevices);
+    }
   } catch (err) {
     console.warn('Could not save logged in devices:', err);
   }
@@ -298,6 +329,21 @@ export function updateCurrentDeviceLocation(
 
   if (index !== -1) {
     const existing = currentList[index];
+    const coordsChanged =
+      !existing.coordinates ||
+      Math.abs(existing.coordinates.lat - coords.lat) > 0.00001 ||
+      Math.abs(existing.coordinates.lng - coords.lng) > 0.00001;
+    const accuracyChanged =
+      existing.accuracyMeters === undefined ||
+      Math.abs((existing.accuracyMeters || 0) - roundedAccuracy) > 5;
+    const movementChanged =
+      Boolean(existing.isMoving) !== Boolean(extra?.isMoving);
+
+    // If device hasn't moved and status is unchanged, skip writing to avoid render loops
+    if (!coordsChanged && !accuracyChanged && !movementChanged && existing.isOnline) {
+      return;
+    }
+
     const updated: LoggedInDevice = {
       ...existing,
       coordinates: coords,
@@ -365,14 +411,12 @@ export function markDeviceLoggedOut(identifier?: string, userId?: string): void 
   const toRemoveIndices = new Set<number>();
   const devicesToRemove: LoggedInDevice[] = [];
 
-  const isExplicitTarget = Boolean(identifier || userId);
-
   const checkMatches = (d: LoggedInDevice) => {
     if (!d) return false;
     if (identifier && (d.deviceId === identifier || d.deviceId.includes(identifier) || d.userId === identifier)) return true;
     if (userId && d.userId === userId) return true;
-    // Only match baseDeviceId if NO explicit foreign identifier/user was targeted
-    if (!isExplicitTarget && (d.deviceId === baseDeviceId || d.deviceId.startsWith(baseDeviceId))) return true;
+    // Always match all local device sessions on this hardware client
+    if (d.deviceId === baseDeviceId || d.deviceId.startsWith(baseDeviceId) || d.deviceId.includes(baseDeviceId)) return true;
     return false;
   };
 
@@ -391,6 +435,20 @@ export function markDeviceLoggedOut(identifier?: string, userId?: string): void 
   devicesToRemove.forEach((d) => {
     broadcastDeviceEvent('REMOVE', { ...d, isOnline: false });
   });
+
+  // Dispatch in-tab CustomEvent so maps, active device drawers, and call lists update immediately
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(
+        new CustomEvent('dira_device_logged_out', {
+          detail: {
+            deviceId: identifier || baseDeviceId,
+            userId: userId || identifier || '',
+          },
+        })
+      );
+    } catch {}
+  }
 
   // Cross-tab storage event for webviews and secondary tabs
   if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
@@ -420,10 +478,31 @@ export function markDeviceLoggedOut(identifier?: string, userId?: string): void 
         const docRef = doc(firestore, FIRESTORE_COLLECTION_DEVICES, identifier);
         deleteDoc(docRef).catch(() => {});
       }
-      if (!isExplicitTarget) {
-        const baseDocRef = doc(firestore, FIRESTORE_COLLECTION_DEVICES, baseDeviceId);
-        deleteDoc(baseDocRef).catch(() => {});
+      if (userId) {
+        const userDocRef = doc(firestore, FIRESTORE_COLLECTION_DEVICES, `${baseDeviceId}_${userId}`);
+        deleteDoc(userDocRef).catch(() => {});
       }
+      const baseDocRef = doc(firestore, FIRESTORE_COLLECTION_DEVICES, baseDeviceId);
+      deleteDoc(baseDocRef).catch(() => {});
+
+      // Comprehensive sweep in Firestore collection for matching records
+      getDocs(collection(firestore, FIRESTORE_COLLECTION_DEVICES))
+        .then((snapshot) => {
+          if (snapshot && snapshot.docs) {
+            snapshot.docs.forEach((dDoc) => {
+              const data = dDoc.data() as LoggedInDevice;
+              if (
+                (userId && data.userId === userId) ||
+                dDoc.id.startsWith(baseDeviceId) ||
+                dDoc.id.includes(baseDeviceId) ||
+                (identifier && (dDoc.id === identifier || data.userId === identifier))
+              ) {
+                deleteDoc(doc(firestore, FIRESTORE_COLLECTION_DEVICES, dDoc.id)).catch(() => {});
+              }
+            });
+          }
+        })
+        .catch(() => {});
     }
   } catch (e) {
     console.warn('Firestore device logout note:', e);
@@ -567,16 +646,32 @@ export function subscribeToForceLogouts(
   onRevoked: (event: ForceLogoutEvent) => void
 ): () => void {
   let isSubscribed = true;
+  // CRITICAL: Record the exact time when this active user session mounted.
+  // Any administrative logout event created BEFORE this moment is an obsolete historical event
+  // and MUST NEVER kick out a user who just logged in.
+  const subscriptionStartTime = Date.now();
+  const sessionDeviceId = currentUserId ? `${currentDeviceId}_${currentUserId}` : currentDeviceId;
 
   const handleEventCheck = (data: any) => {
     if (!data || !isSubscribed) return;
-    const targetDev = data.targetDeviceId;
-    const targetUser = data.targetUserId;
+
+    // Check event timestamp: strictly ignore stale events from past sessions
+    const eventTime = data.timestamp ? new Date(data.timestamp).getTime() : 0;
+    if (!eventTime || eventTime <= subscriptionStartTime) {
+      return;
+    }
+
+    const targetDev = (data.targetDeviceId || '').trim();
+    const targetUser = (data.targetUserId || '').trim();
     
-    const isTargetDevice = Boolean(targetDev && (targetDev === currentDeviceId || currentDeviceId.startsWith(targetDev) || targetDev.startsWith(currentDeviceId)));
+    // Only target if explicitly matching this exact device ID or this exact session/user ID
+    const isTargetDevice = Boolean(
+      targetDev && (targetDev === currentDeviceId || targetDev === sessionDeviceId)
+    );
     const isTargetUser = Boolean(currentUserId && targetUser && currentUserId === targetUser);
 
     if (isTargetDevice || isTargetUser) {
+      console.warn('Matching active remote force-logout directive:', data);
       onRevoked(data);
     }
   };
@@ -647,6 +742,9 @@ export function subscribeToLoggedInDevices(
   onUpdate: (devices: LoggedInDevice[]) => void
 ): () => void {
   let isSubscribed = true;
+
+  // 0. Register in-memory subscriber for instant same-tab notifications
+  inMemoryDeviceSubscribers.add(onUpdate);
 
   // 1. Cross-tab BroadcastChannel listener
   let channel: BroadcastChannel | null = null;
@@ -733,7 +831,6 @@ export function subscribeToLoggedInDevices(
           (d) => d && !isSampleDevice(d) && d.isOnline !== false
         );
         saveLoggedInDevices(cleanList);
-        onUpdate(cleanList);
       };
 
       // Immediate fetch
@@ -759,6 +856,7 @@ export function subscribeToLoggedInDevices(
 
   return () => {
     isSubscribed = false;
+    inMemoryDeviceSubscribers.delete(onUpdate);
     if (channel) {
       try {
         channel.close();

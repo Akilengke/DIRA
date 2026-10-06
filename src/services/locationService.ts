@@ -587,11 +587,40 @@ class BackgroundLocationTracker {
     }
   };
 
+  public isTracking(): boolean {
+    return this.isCollecting;
+  }
+
   public stopTracking() {
-    // Live GPS is permanently active for officer proximity allocation and cannot be turned off.
-    // We restart or maintain tracking to ensure uninterrupted responder dispatch capability.
-    if (!this.isCollecting) {
-      this.startTracking(true);
+    this.isCollecting = false;
+
+    // 1. Clear HTML5 geolocation watch
+    if (this.watchId !== null && typeof navigator !== 'undefined' && 'geolocation' in navigator) {
+      try {
+        navigator.geolocation.clearWatch(this.watchId);
+      } catch (err) {
+        console.warn('Error clearing geolocation watch:', err);
+      }
+      this.watchId = null;
+    }
+
+    // 2. Clear periodic heartbeat timer
+    if (this.intervalTimer) {
+      clearInterval(this.intervalTimer);
+      this.intervalTimer = null;
+    }
+
+    // 3. Release WakeLock sentinel
+    if (this.wakeLockSentinel) {
+      try {
+        this.wakeLockSentinel.release();
+      } catch {}
+      this.wakeLockSentinel = null;
+    }
+
+    // 4. Detach visibility change listener
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', this.handleVisibilityChange);
     }
   }
 

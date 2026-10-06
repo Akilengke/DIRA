@@ -18,6 +18,8 @@ import { ReportCaseModal } from './components/ReportCaseModal';
 import { EmergencyHotlineModal } from './components/EmergencyHotlineModal';
 import { AuthModal } from './components/AuthModal';
 import { AuthScreen } from './components/AuthScreen';
+import { WelcomeScreen } from './components/WelcomeScreen';
+import { Sparkles, PhoneOff, X } from 'lucide-react';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
 import { GoogleDriveVaultModal } from './components/GoogleDriveVaultModal';
 import { InAppNotificationAlert } from './components/InAppNotificationAlert';
@@ -26,6 +28,9 @@ import { CaseDetailsPreviewModal } from './components/CaseDetailsPreviewModal';
 import { EmergencyReportModal } from './components/EmergencyReportModal';
 import { ApkExportModal } from './components/ApkExportModal';
 import { DatabaseModal } from './components/DatabaseModal';
+import { CaseAllocationAlertModal } from './components/CaseAllocationAlertModal';
+import { HourlyReminderAlertModal } from './components/HourlyReminderAlertModal';
+import { autoSyncPushSubscription } from './services/pushNotificationService';
 import { allocateCaseWithAI, autoAllocateCasesBatch } from './services/aiAllocationService';
 import { sortCasesLatestFirst } from './utils/dateUtils';
 import { 
@@ -53,8 +58,20 @@ import {
   showSystemIncidentNotification,
   playChatBroadcastChime,
   showSystemChatNotification,
-  requestNotificationPermission
+  requestNotificationPermission,
+  createCaseAllocatedNotification,
+  createHourlyReminderNotification,
+  showSystemCaseAllocatedNotification,
+  showSystemHourlyReminderNotification,
+  broadcastCaseAllocated
 } from './services/notificationService';
+import {
+  isCaseAllocatedToUser,
+  checkHourlyRemindersDue,
+  registerCaseAllocation,
+  markCaseResolvedInReminders,
+  triggerInstantHourlyReminder
+} from './services/caseReminderService';
 import { 
   backgroundLocationTracker, 
   formatDistance,
@@ -116,8 +133,25 @@ export default function App() {
   const [previewCase, setPreviewCase] = useState<DonkeyCase | null>(null);
   const [isSoundAlertEnabled, setIsSoundAlertEnabled] = useState(true);
 
+  // Case Allocation Instant Message State for Super Users
+  const [allocatedAlertCase, setAllocatedAlertCase] = useState<DonkeyCase | null>(null);
+
+  // Hourly Action Reminder Alert State for Super Users
+  const [hourlyReminderState, setHourlyReminderState] = useState<{ caseItem: DonkeyCase; hourNumber: number } | null>(null);
+
+  // Super User initial filter status
+  const [superUserFilterStatus, setSuperUserFilterStatus] = useState<string>('all');
+
+  // Welcome Screen state shown when a user logs in
+  const [welcomeUser, setWelcomeUser] = useState<UserProfile | null>(null);
+
   // All users stored in Firebase & local database
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+
+  // Count active cases allocated to current Super User
+  const myAllocatedCasesCount = cases.filter(
+    (c) => isCaseAllocatedToUser(c, currentUser) && c.status !== 'resolved' && c.status !== 'dismissed'
+  ).length;
 
   // Sync users from Firebase Firestore, server registry, and IndexedDB
   useEffect(() => {
@@ -221,6 +255,12 @@ export default function App() {
   // Voice & Video Calling State (Active across all tabs and views)
   const [activeCall, setActiveCall] = useState<ActiveCallSession | null>(null);
   const [incomingCall, setIncomingCall] = useState<ActiveCallSession | null>(null);
+  const [callEndedAlert, setCallEndedAlert] = useState<{
+    callId: string;
+    title: string;
+    duration?: string;
+    reason?: string;
+  } | null>(null);
 
   // Synchronize current user credentials with CallService so all devices can receive calls
   useEffect(() => {
@@ -229,15 +269,52 @@ export default function App() {
     callService.setCurrentUser(effectiveUserId, effectiveName, currentUser?.role, currentUser?.phone);
   }, [currentUser]);
 
-  // Subscribe to real-time call states & incoming ringing invites globally
+  // Subscribe to real-time call states, incoming ringing invites & call ended events globally
   useEffect(() => {
     const unsubCall = callService.onCallState(setActiveCall);
     const unsubIncoming = callService.onIncomingCall(setIncomingCall);
+    const unsubEnded = callService.onCallEnded((data) => {
+      setCallEndedAlert(data);
+      const timer = setTimeout(() => {
+        setCallEndedAlert((prev) => (prev?.callId === data.callId ? null : prev));
+      }, 6000);
+      return () => clearTimeout(timer);
+    });
+
     return () => {
       unsubCall();
       unsubIncoming();
+      unsubEnded();
     };
   }, []);
+
+  // Handle app launch from background push notification (?callId=...&action=answer or ?channel=...)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const urlParams = new URLSearchParams(window.location.search);
+    const pushCallId = urlParams.get('callId');
+    const pushAction = urlParams.get('action');
+    const pushChannel = urlParams.get('channel');
+
+    if (pushCallId && pushAction === 'answer') {
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, '', cleanUrl);
+
+      setTimeout(() => {
+        callService.joinOrAnswerCallById(pushCallId);
+      }, 700);
+    } else if (pushChannel) {
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, '', cleanUrl);
+
+      handleOpenChatChannel(pushChannel);
+    }
+  }, []);
+
+  // Auto-sync background push notification subscription on boot & login
+  useEffect(() => {
+    autoSyncPushSubscription(currentUser);
+  }, [currentUser?.id]);
 
   const handleAcceptIncomingCall = (call: ActiveCallSession) => {
     setIncomingCall(null);
@@ -253,9 +330,15 @@ export default function App() {
     callService.rejectCall(callId);
   };
 
-  const handleEndActiveCall = () => {
+  const handleEndActiveCall = (immediate = false) => {
     callService.endCall();
-    setActiveCall(null);
+    if (immediate) {
+      setActiveCall(null);
+    } else {
+      setTimeout(() => {
+        setActiveCall(null);
+      }, 3000);
+    }
   };
 
   // Live Background Geolocation & Proximity Tracker
@@ -317,65 +400,103 @@ export default function App() {
     }
   };
 
-  // Immediate GPS query on mount
+  // Immediate GPS query on mount ONLY if a user is logged in
   useEffect(() => {
-    syncLiveGpsLocation();
-  }, []);
+    if (currentUser) {
+      syncLiveGpsLocation();
+    }
+  }, [currentUser?.id]);
 
-  // Start background location tracking on mount and subscribe to live GPS movement updates
+  // Background location tracking lifecycle:
+  // ONLY active while a user is authenticated and logged in.
+  // When a user logs out, all location tracking is immediately stopped until they log in again.
   useEffect(() => {
+    if (!currentUser) {
+      backgroundLocationTracker.stopTracking();
+      return;
+    }
+
     backgroundLocationTracker.startTracking(bgLocationSettings.collectWhenNotInUse);
 
     const unsubscribe = backgroundLocationTracker.subscribe((coords, accuracy, details) => {
-      setUserCoordinates(coords);
-      setUserAccuracy(accuracy || 10);
+      setUserCoordinates((prev) => {
+        if (
+          prev &&
+          Math.abs(prev.lat - coords.lat) < 0.00002 &&
+          Math.abs(prev.lng - coords.lng) < 0.00002
+        ) {
+          return prev;
+        }
+        return coords;
+      });
+      setUserAccuracy((prev) => {
+        const rounded = Math.round(accuracy || 10);
+        if (Math.abs(prev - rounded) < 3) return prev;
+        return rounded;
+      });
 
       // Broadcast and persist live moved location to device tracking registry ONLY if user is logged in
-      if (currentUser) {
-        updateCurrentDeviceLocation(coords, accuracy, currentUser.id, details);
-      }
+      updateCurrentDeviceLocation(coords, accuracy, currentUser.id, details);
 
       // Keep currentUser's location synchronized if logged in
-      if (currentUser) {
-        saveLastKnownLocation(coords, accuracy);
-        setCurrentUser((prev) => {
-          if (!prev) return prev;
-          if (
-            prev.coordinates &&
-            Math.abs(prev.coordinates.lat - coords.lat) < 0.00002 &&
-            Math.abs(prev.coordinates.lng - coords.lng) < 0.00002
-          ) {
-            return prev;
-          }
-          const updated = {
-            ...prev,
+      saveLastKnownLocation(coords, accuracy);
+      setCurrentUser((prev) => {
+        if (!prev) return prev;
+        if (
+          prev.coordinates &&
+          Math.abs(prev.coordinates.lat - coords.lat) < 0.00002 &&
+          Math.abs(prev.coordinates.lng - coords.lng) < 0.00002
+        ) {
+          return prev;
+        }
+        const updated = {
+          ...prev,
+          coordinates: coords,
+          lastKnownLocation: {
             coordinates: coords,
-            lastKnownLocation: {
-              coordinates: coords,
-              timestamp: new Date().toISOString(),
-              accuracyMeters: accuracy ? Math.round(accuracy) : 10,
-            },
-          };
-          try {
-            localStorage.setItem('kaa_rada_current_user_v2', JSON.stringify(updated));
-          } catch {}
-          return updated;
-        });
-      }
+            timestamp: new Date().toISOString(),
+            accuracyMeters: accuracy ? Math.round(accuracy) : 10,
+          },
+        };
+        try {
+          localStorage.setItem('kaa_rada_current_user_v2', JSON.stringify(updated));
+        } catch {}
+        return updated;
+      });
     });
 
     return () => {
       unsubscribe();
+      backgroundLocationTracker.stopTracking();
     };
   }, [bgLocationSettings.collectWhenNotInUse, currentUser?.id]);
 
   // When currentUser changes (e.g. login or switch), update userCoordinates if user has location
   useEffect(() => {
     if (currentUser?.coordinates?.lat && currentUser?.coordinates?.lng) {
-      setUserCoordinates(currentUser.coordinates);
+      setUserCoordinates((prev) => {
+        if (
+          prev &&
+          Math.abs(prev.lat - currentUser.coordinates!.lat) < 0.00002 &&
+          Math.abs(prev.lng - currentUser.coordinates!.lng) < 0.00002
+        ) {
+          return prev;
+        }
+        return currentUser.coordinates!;
+      });
       saveLastKnownLocation(currentUser.coordinates, 10);
     } else if (currentUser?.lastKnownLocation?.coordinates?.lat && currentUser?.lastKnownLocation?.coordinates?.lng) {
-      setUserCoordinates(currentUser.lastKnownLocation.coordinates);
+      setUserCoordinates((prev) => {
+        const lastCoords = currentUser.lastKnownLocation!.coordinates;
+        if (
+          prev &&
+          Math.abs(prev.lat - lastCoords.lat) < 0.00002 &&
+          Math.abs(prev.lng - lastCoords.lng) < 0.00002
+        ) {
+          return prev;
+        }
+        return lastCoords;
+      });
       saveLastKnownLocation(currentUser.lastKnownLocation.coordinates, 10);
     }
   }, [currentUser?.id]);
@@ -459,29 +580,124 @@ export default function App() {
   }, [notifications]);
 
   // Real-time multi-window / cross-tab broadcast listener
-  // Whenever any tab reports a case, all logged-in users get the notification alert!
+  // Whenever any tab reports or allocates a case, all logged-in users get the notification alert!
   useEffect(() => {
-    const unsubscribe = subscribeToCaseBroadcasts((incomingCase) => {
-      // 1. Sync case to local cases state if not yet present, ordered latest first
-      setCases((prev) => {
-        if (prev.some((c) => c.id === incomingCase.id || c.trackingCode === incomingCase.trackingCode)) {
-          return prev;
-        }
-        return sortCasesLatestFirst([incomingCase, ...prev]);
-      });
+    const unsubscribe = subscribeToCaseBroadcasts(
+      (incomingCase) => {
+        // 1. Sync case to local cases state if not yet present, ordered latest first
+        setCases((prev) => {
+          if (prev.some((c) => c.id === incomingCase.id || c.trackingCode === incomingCase.trackingCode)) {
+            return prev;
+          }
+          return sortCasesLatestFirst([incomingCase, ...prev]);
+        });
 
-      // 2. Alert and ring phone for all logged in users!
-      if (currentUser) {
-        const notif = createNotificationFromCase(incomingCase, currentUser);
-        setNotifications((prev) => [notif, ...prev.filter((n) => n.caseId !== incomingCase.id)]);
-        triggerIncidentPhoneRing(incomingCase);
+        // 2. Alert and ring phone for all logged in users!
+        if (currentUser) {
+          const notif = createNotificationFromCase(incomingCase, currentUser);
+          setNotifications((prev) => [notif, ...prev.filter((n) => n.caseId !== incomingCase.id)]);
+          triggerIncidentPhoneRing(incomingCase);
+        }
+      },
+      (allocatedCase, targetOfficerId) => {
+        // Sync allocated case update to state
+        setCases((prev) => {
+          const exists = prev.some((c) => c.id === allocatedCase.id);
+          if (exists) {
+            return prev.map((c) => (c.id === allocatedCase.id ? allocatedCase : c));
+          }
+          return sortCasesLatestFirst([allocatedCase, ...prev]);
+        });
+
+        // Check if allocated to CURRENT Super User
+        if (currentUser && isCaseAllocatedToUser(allocatedCase, currentUser)) {
+          setAllocatedAlertCase(allocatedCase);
+          triggerIncidentPhoneRing(allocatedCase);
+          const allocNotif = createCaseAllocatedNotification(allocatedCase, currentUser);
+          setNotifications((prev) => [allocNotif, ...prev.filter((n) => n.id !== allocNotif.id)]);
+          showSystemCaseAllocatedNotification(allocatedCase, currentUser.name);
+          registerCaseAllocation(allocatedCase, {
+            id: currentUser.id,
+            name: currentUser.name,
+            phone: currentUser.phone,
+          });
+        }
       }
-    });
+    );
 
     return () => {
       unsubscribe();
     };
   }, [currentUser, isSoundAlertEnabled]);
+
+  // Hourly Action Reminders Daemon for Super Users
+  // Continuously monitors active allocated cases and triggers reminders every 1 hour until resolved
+  useEffect(() => {
+    if (!currentUser) return;
+    const isOfficer = 
+      currentUser.role === 'super_user' || 
+      currentUser.role === 'super_admin' || 
+      currentUser.role === 'chief_officer' || 
+      currentUser.role === 'field_officer';
+    if (!isOfficer) return;
+
+    const runReminderCheck = () => {
+      checkHourlyRemindersDue(cases, currentUser, (dueCase, hourNumber) => {
+        // 1. Popup Hourly Reminder Modal
+        setHourlyReminderState({ caseItem: dueCase, hourNumber });
+
+        // 2. Play audible chime & trigger vibration
+        if (isSoundAlertEnabled) {
+          try {
+            playNotificationChime();
+          } catch {}
+          triggerHapticAlert(50);
+        }
+
+        // 3. Create persistent InAppNotification
+        const reminderNotif = createHourlyReminderNotification(dueCase, hourNumber, currentUser);
+        setNotifications((prev) => [reminderNotif, ...prev.filter((n) => n.id !== reminderNotif.id)]);
+
+        // 4. Native system notification
+        showSystemHourlyReminderNotification(dueCase, hourNumber);
+      });
+    };
+
+    // Run immediately on user change/mount
+    runReminderCheck();
+
+    // Check periodically every 30 seconds
+    const intervalId = setInterval(runReminderCheck, 30000);
+
+    // Also check when tab regains focus or visibility
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        runReminderCheck();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(intervalId);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [currentUser, cases, isSoundAlertEnabled]);
+
+  // Manual test trigger for hourly reminder
+  const handleTriggerTestReminder = (caseItem: DonkeyCase) => {
+    triggerInstantHourlyReminder(caseItem, currentUser, (dueCase, hourNumber) => {
+      setHourlyReminderState({ caseItem: dueCase, hourNumber });
+      if (isSoundAlertEnabled) {
+        try {
+          playNotificationChime();
+        } catch {}
+        triggerHapticAlert(50);
+      }
+      const reminderNotif = createHourlyReminderNotification(dueCase, hourNumber, currentUser);
+      setNotifications((prev) => [reminderNotif, ...prev.filter((n) => n.id !== reminderNotif.id)]);
+      showSystemHourlyReminderNotification(dueCase, hourNumber);
+    });
+  };
 
   // Real-time Global Chat Broadcast Listener
   // Broadcasts incoming messages across Firestore and cross-tab/webview to all logged-in users!
@@ -610,15 +826,27 @@ export default function App() {
 
     setCases((prev) => sortCasesLatestFirst([fullCase, ...prev.filter(c => c.id !== fullCase.id)]));
 
+    // Register allocation in reminder service for hourly reminders
+    registerCaseAllocation(fullCase, assignedOfficer);
+
     // In-app notification and phone ring alert for all logged in users:
     if (currentUser) {
       const notif = createNotificationFromCase(fullCase, currentUser);
       setNotifications((prev) => [notif, ...prev.filter((n) => n.caseId !== fullCase.id)]);
       triggerIncidentPhoneRing(fullCase);
+
+      // If allocated to current Super User: show instant message modal!
+      if (isCaseAllocatedToUser(fullCase, currentUser)) {
+        setAllocatedAlertCase(fullCase);
+        const allocNotif = createCaseAllocatedNotification(fullCase, currentUser);
+        setNotifications((prev) => [allocNotif, ...prev.filter((n) => n.id !== allocNotif.id)]);
+        showSystemCaseAllocatedNotification(fullCase, currentUser.name);
+      }
     }
 
     // Broadcast in real-time to all other open tabs / sessions
     broadcastCaseReported(fullCase, currentUser?.id);
+    broadcastCaseAllocated(fullCase, assignedOfficer.id);
   };
 
   // Notification action handlers
@@ -695,6 +923,11 @@ export default function App() {
     newStatus: CaseStatus,
     resolutionNotes?: string
   ) => {
+    // If resolving case, halt hourly reminders
+    if (newStatus === 'resolved' || newStatus === 'dismissed') {
+      markCaseResolvedInReminders(caseId);
+    }
+
     setCases((prev) =>
       prev.map((c) => {
         if (c.id !== caseId) return c;
@@ -746,8 +979,13 @@ export default function App() {
     caseId: string,
     officerName: string,
     officerRole: string,
-    instructions: string
+    instructions: string,
+    officerId?: string,
+    officerPhone?: string
   ) => {
+    const effectiveOfficerId = officerId || `off-${Date.now()}`;
+    const effectiveOfficerPhone = officerPhone || '0722 000 000';
+
     setCases((prev) =>
       prev.map((c) => {
         if (c.id !== caseId) return c;
@@ -761,18 +999,39 @@ export default function App() {
           newStatus: 'dispatched',
         };
 
-        return {
+        const updated: DonkeyCase = {
           ...c,
           status: 'dispatched' as CaseStatus,
           assignedOfficer: {
-            id: `off-${Date.now()}`,
+            id: effectiveOfficerId,
             name: officerName,
             title: officerRole,
             department: 'Assigned Response Unit',
-            phone: '0722 000 000',
+            phone: effectiveOfficerPhone,
           },
           actionLogs: [escalationLog, ...(c.actionLogs || [])],
         };
+
+        // Register allocation in reminder tracker
+        registerCaseAllocation(updated, {
+          id: effectiveOfficerId,
+          name: officerName,
+          phone: effectiveOfficerPhone,
+        });
+
+        // Broadcast to all tabs
+        broadcastCaseAllocated(updated, effectiveOfficerId);
+
+        // Check if allocated to current user
+        if (currentUser && isCaseAllocatedToUser(updated, currentUser)) {
+          setAllocatedAlertCase(updated);
+          triggerIncidentPhoneRing(updated);
+          const allocNotif = createCaseAllocatedNotification(updated, currentUser);
+          setNotifications((np) => [allocNotif, ...np.filter((n) => n.id !== allocNotif.id)]);
+          showSystemCaseAllocatedNotification(updated, currentUser.name);
+        }
+
+        return updated;
       })
     );
   };
@@ -784,7 +1043,9 @@ export default function App() {
       caseId,
       officer.name,
       officer.roleTitle || officer.designation,
-      `Automatic Proximity Dispatch: Assigned based on live GPS radar. Officer is ~${distFormatted} from incident scene. Mobilize immediate response unit.`
+      `Automatic Proximity Dispatch: Assigned based on live GPS radar. Officer is ~${distFormatted} from incident scene. Mobilize immediate response unit.`,
+      officer.id,
+      officer.phone
     );
   };
 
@@ -793,6 +1054,9 @@ export default function App() {
     caseId: string,
     resolution: CaseResolution
   ) => {
+    // Halt hourly reminders immediately upon resolution
+    markCaseResolvedInReminders(caseId);
+
     setCases((prev) =>
       prev.map((c) => {
         if (c.id !== caseId) return c;
@@ -860,7 +1124,17 @@ export default function App() {
         markDeviceLoggedOut(getOrCreateDeviceId(), currentUser.id);
       } catch {}
     }
+
+    // Reset revocation notice and clean any previous logout broadcast artifacts
+    setRemoteRevocationNotice(null);
+    try {
+      localStorage.removeItem('dira_force_logout_event');
+      localStorage.removeItem('dira_device_logout_event');
+      localStorage.setItem(STORAGE_KEY_USER, JSON.stringify(newUser));
+    } catch {}
+
     setCurrentUser(newUser);
+    setWelcomeUser(newUser);
     if (newUser?.role === 'super_user') {
       setActiveTab('super_portal');
     }
@@ -870,8 +1144,9 @@ export default function App() {
 
   // Listen for Super Admin remote force-logout directed at this device or user
   useEffect(() => {
+    if (!currentUser) return;
     const baseDevId = getOrCreateDeviceId();
-    const currentUserId = currentUser?.id;
+    const currentUserId = currentUser.id;
 
     const unsubscribe = subscribeToForceLogouts(baseDevId, currentUserId, (event) => {
       console.warn('Received remote revocation directive from Super Admin:', event);
@@ -884,19 +1159,33 @@ export default function App() {
     return unsubscribe;
   }, [currentUser?.id]);
 
-  // Log out user - completely removes device from map and logged in users registry
+  // Log out user - completely removes location tracking, ceases GPS watching,
+  // and removes device details from the map and active logged-in device list until they log in again
   const handleLogout = () => {
     const baseDevId = getOrCreateDeviceId();
     const currentUserId = currentUser?.id;
+
+    // 1. Immediately cease all GPS hardware tracking and polling
+    try {
+      backgroundLocationTracker.stopTracking();
+    } catch (e) {
+      console.warn('Error stopping background tracker on logout:', e);
+    }
+
+    // 2. Completely unregister device from local storage and Cloud Firestore
     try {
       markDeviceLoggedOut(baseDevId, currentUserId);
     } catch (e) {
       console.error('Device logout error:', e);
     }
+
+    // 3. Clear session and state
     setCurrentUser(null);
     setActiveChatBroadcast(null);
     setUnreadChatCount(0);
     setActiveTab('home');
+
+    // 4. Remove session from local storage
     try {
       localStorage.removeItem(STORAGE_KEY_USER);
     } catch (e) {
@@ -939,7 +1228,13 @@ export default function App() {
 
   // When user is not logged in, show ONLY Log In and Sign Up options
   if (!currentUser) {
-    return <AuthScreen onLogin={handleSelectUser} />;
+    return (
+      <AuthScreen 
+        onLogin={handleSelectUser} 
+        noticeMessage={remoteRevocationNotice}
+        onClearNotice={() => setRemoteRevocationNotice(null)}
+      />
+    );
   }
 
   return (
@@ -1100,6 +1395,13 @@ export default function App() {
                   Test Incident Phone Ring
                 </button>
                 <button
+                  onClick={() => currentUser && setWelcomeUser(currentUser)}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all border border-emerald-700 flex items-center gap-1.5 shadow-xs cursor-pointer"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  Preview AI Welcome Screen
+                </button>
+                <button
                   onClick={() => setActiveTab('chat')}
                   className="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-800 text-white rounded-xl text-xs font-bold transition-all border border-emerald-800 flex items-center gap-1.5 shadow-xs"
                 >
@@ -1142,6 +1444,33 @@ export default function App() {
         onDecline={handleDeclineIncomingCall}
       />
 
+      {/* Floating Call Ended Notice Banner */}
+      {callEndedAlert && !activeCall && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 max-w-md w-[92%] sm:w-auto bg-zinc-950/95 backdrop-blur-md text-white border border-red-500/50 rounded-2xl px-4 py-3 shadow-2xl flex items-center justify-between gap-3 animate-in slide-in-from-top-4 duration-300">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-red-500/20 text-red-400 flex items-center justify-center shrink-0 border border-red-500/30">
+              <PhoneOff className="w-4 h-4" />
+            </div>
+            <div className="text-left min-w-0">
+              <span className="text-xs font-black text-white flex items-center gap-1.5">
+                <span>Call Ended</span>
+                <span className="text-[10px] text-zinc-400 font-normal">({callEndedAlert.reason || 'Completed'})</span>
+              </span>
+              <span className="text-[11px] text-zinc-300 truncate block">
+                {callEndedAlert.title} {callEndedAlert.duration && callEndedAlert.duration !== '00:00' ? `• Duration: ${callEndedAlert.duration}` : ''}
+              </span>
+            </div>
+          </div>
+          <button
+            onClick={() => setCallEndedAlert(null)}
+            className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer text-xs shrink-0"
+            title="Dismiss"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Global Voice & Video Call Modal / PiP - Stays connected across tab navigation */}
       {activeCall && (
         <CallModal
@@ -1157,6 +1486,7 @@ export default function App() {
         onClose={() => setIsNotificationsModalOpen(false)}
         notifications={notifications}
         cases={cases}
+        currentUser={currentUser}
         onMarkAllAsRead={handleMarkAllNotificationsRead}
         onMarkAsRead={handleMarkNotificationRead}
         onClearAll={handleClearNotifications}
@@ -1246,6 +1576,14 @@ export default function App() {
         isOpen={isApkModalOpen}
         onClose={() => setIsApkModalOpen(false)}
       />
+
+      {/* Animated Welcome Screen shown when user logs in: Powered by Punda wangu AI */}
+      {welcomeUser && (
+        <WelcomeScreen
+          user={welcomeUser}
+          onComplete={() => setWelcomeUser(null)}
+        />
+      )}
     </div>
   );
 }

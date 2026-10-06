@@ -31,7 +31,9 @@ import {
   PhoneOff,
   PhoneIncoming,
   BellRing,
-  UserPlus
+  UserPlus,
+  Navigation,
+  Compass
 } from 'lucide-react';
 import { 
   DiraMessage, 
@@ -636,6 +638,21 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
     }
   };
 
+  // Helper to extract coordinates from text (e.g. -1.368, 38.010 or Lat: -1.368, Lon: 38.010)
+  const extractCoordinatesFromText = (text: string): { lat: number; lng: number; fullMatch: string } | null => {
+    if (!text) return null;
+    const regex = /(?:lat(?:itude)?[:\s]*)?([-+]?\d{1,2}\.\d{3,8})[,\s]+(?:lon(?:gitude)?|lng[:\s]*)?([-+]?\d{1,3}\.\d{3,8})/i;
+    const match = text.match(regex);
+    if (match) {
+      const lat = parseFloat(match[1]);
+      const lng = parseFloat(match[2]);
+      if (!isNaN(lat) && !isNaN(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+        return { lat, lng, fullMatch: match[0] };
+      }
+    }
+    return null;
+  };
+
   // Check if current user is allowed in this channel
   const isChannelRestricted = Boolean(
     currentChannel.requiresOfficerRole && 
@@ -956,18 +973,43 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                     </div>
                   )}
 
-                  {/* Attached GPS Location pill */}
+                  {/* Attached GPS Coordinates with Direct Google Maps & Directions Link */}
                   {msg.location && (
-                    <div className={`p-1.5 rounded-xl text-[10px] font-medium flex items-center gap-1.5 border ${
-                      isMe
-                        ? 'bg-emerald-900/80 text-emerald-100 border-emerald-700'
-                        : 'bg-zinc-100 text-zinc-700 border-zinc-200'
-                    }`}>
-                      <MapPin className="w-3 h-3 text-red-500 shrink-0" />
-                      <span>
-                        GPS: {msg.location.latitude}, {msg.location.longitude} {msg.location.name ? `(${msg.location.name})` : ''}
-                      </span>
-                    </div>
+                    <a
+                      href={`https://www.google.com/maps/dir/?api=1&destination=${msg.location.latitude},${msg.location.longitude}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className={`p-2 sm:p-2.5 rounded-xl text-xs flex items-center justify-between gap-2.5 border transition-all hover:scale-[1.01] active:scale-[0.99] group/loc cursor-pointer shadow-xs my-1 ${
+                        isMe
+                          ? 'bg-emerald-950/70 border-emerald-600/80 text-emerald-100 hover:bg-emerald-900/90'
+                          : 'bg-emerald-50/90 border-emerald-300 text-emerald-950 hover:bg-emerald-100'
+                      }`}
+                      title={`Open Google Maps directions to (${msg.location.latitude}, ${msg.location.longitude})`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                          isMe ? 'bg-emerald-800 text-emerald-200 border border-emerald-700' : 'bg-emerald-600 text-white shadow-2xs'
+                        }`}>
+                          <MapPin className="w-4 h-4 text-red-400 group-hover/loc:scale-110 transition-transform" />
+                        </div>
+                        <div className="flex flex-col min-w-0 text-left">
+                          <span className="font-extrabold text-[11px] truncate">
+                            {msg.location.name || 'Shared GPS Coordinates'}
+                          </span>
+                          <span className={`text-[10px] font-mono font-medium ${isMe ? 'text-emerald-300' : 'text-emerald-700'}`}>
+                            {msg.location.latitude.toFixed(5)}, {msg.location.longitude.toFixed(5)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-extrabold shrink-0 shadow-xs transition-all ${
+                        isMe ? 'bg-emerald-700 group-hover/loc:bg-emerald-600 text-white' : 'bg-emerald-700 group-hover/loc:bg-emerald-800 text-white'
+                      }`}>
+                        <Navigation className="w-3 h-3 text-white" />
+                        <span>Directions</span>
+                        <ExternalLink className="w-2.5 h-2.5 opacity-80" />
+                      </div>
+                    </a>
                   )}
 
                   {/* Voice Note Player if present */}
@@ -1097,11 +1139,85 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                     </div>
                   )}
 
-                  {/* Message Content */}
+                  {/* Message Content with Interactive Coordinates */}
                   {msg.content && !['📷 Photo attached', 'Photo attached'].includes(msg.content) && (
-                    <p className="leading-relaxed whitespace-pre-wrap select-text">
-                      {msg.content}
-                    </p>
+                    <div className="space-y-1.5">
+                      {(() => {
+                        const coords = extractCoordinatesFromText(msg.content);
+                        if (!coords) {
+                          return <p className="leading-relaxed whitespace-pre-wrap select-text">{msg.content}</p>;
+                        }
+
+                        const parts = msg.content.split(coords.fullMatch);
+                        return (
+                          <>
+                            <p className="leading-relaxed whitespace-pre-wrap select-text">
+                              {parts.map((part, idx) => (
+                                <React.Fragment key={idx}>
+                                  {part}
+                                  {idx < parts.length - 1 && (
+                                    <a
+                                      href={`https://www.google.com/maps/dir/?api=1&destination=${coords.lat},${coords.lng}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className={`inline-flex items-center gap-0.5 font-mono font-bold underline underline-offset-2 px-1 py-0.5 rounded transition-all cursor-pointer ${
+                                        isMe
+                                          ? 'text-emerald-200 bg-emerald-900/80 hover:bg-emerald-950 hover:text-white'
+                                          : 'text-emerald-800 bg-emerald-100 hover:bg-emerald-200 hover:text-emerald-950'
+                                      }`}
+                                      title="Click to open Google Maps & get directions"
+                                    >
+                                      <MapPin className="w-3 h-3 text-red-500 inline shrink-0" />
+                                      <span>{coords.fullMatch}</span>
+                                      <Navigation className="w-2.5 h-2.5 inline shrink-0 ml-0.5" />
+                                    </a>
+                                  )}
+                                </React.Fragment>
+                              ))}
+                            </p>
+
+                            {/* If msg does not already have an attached location card, provide an explicit Directions Card for text coordinates */}
+                            {!msg.location && (
+                              <a
+                                href={`https://www.google.com/maps/dir/?api=1&destination=${coords.lat},${coords.lng}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className={`p-2 rounded-xl text-xs flex items-center justify-between gap-2 border transition-all hover:scale-[1.01] active:scale-[0.99] group/loc cursor-pointer shadow-xs my-1 ${
+                                  isMe
+                                    ? 'bg-emerald-950/70 border-emerald-600/80 text-emerald-100 hover:bg-emerald-900/90'
+                                    : 'bg-emerald-50/90 border-emerald-300 text-emerald-950 hover:bg-emerald-100'
+                                }`}
+                                title={`Open Google Maps directions to (${coords.lat}, ${coords.lng})`}
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
+                                    isMe ? 'bg-emerald-800 text-emerald-200 border border-emerald-700' : 'bg-emerald-600 text-white shadow-2xs'
+                                  }`}>
+                                    <MapPin className="w-4 h-4 text-red-400 group-hover/loc:scale-110 transition-transform" />
+                                  </div>
+                                  <div className="flex flex-col min-w-0 text-left">
+                                    <span className="font-extrabold text-[11px] truncate">
+                                      Coordinates in Message
+                                    </span>
+                                    <span className={`text-[10px] font-mono font-medium ${isMe ? 'text-emerald-300' : 'text-emerald-700'}`}>
+                                      {coords.lat.toFixed(5)}, {coords.lng.toFixed(5)}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-extrabold shrink-0 shadow-xs transition-all ${
+                                  isMe ? 'bg-emerald-700 group-hover/loc:bg-emerald-600 text-white' : 'bg-emerald-700 group-hover/loc:bg-emerald-800 text-white'
+                                }`}>
+                                  <Navigation className="w-3 h-3 text-white" />
+                                  <span>Directions</span>
+                                  <ExternalLink className="w-2.5 h-2.5 opacity-80" />
+                                </div>
+                              </a>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
                   )}
 
                   {/* Message Footer: Time + status tick */}
@@ -1320,13 +1436,24 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                     </span>
                   )}
                   {attachedLocation && (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl bg-emerald-100 text-emerald-900 font-bold border border-emerald-200 text-[11px]">
-                      <MapPin className="w-3 h-3 text-red-500" />
-                      GPS: {attachedLocation.latitude}, {attachedLocation.longitude}
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-emerald-100 text-emerald-950 font-bold border border-emerald-300 text-[11px] shadow-xs">
+                      <MapPin className="w-3.5 h-3.5 text-red-500 shrink-0" />
+                      <span>Coords: {attachedLocation.latitude}, {attachedLocation.longitude}</span>
+                      <a
+                        href={`https://www.google.com/maps/dir/?api=1&destination=${attachedLocation.latitude},${attachedLocation.longitude}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-0.5 text-[10px] text-emerald-800 underline hover:text-emerald-950 font-semibold ml-0.5"
+                        title="Preview directions on Google Maps"
+                      >
+                        <Navigation className="w-2.5 h-2.5" />
+                        <span>Map</span>
+                      </a>
                       <button
                         type="button"
                         onClick={() => setAttachedLocation(null)}
-                        className="ml-1 text-emerald-700 hover:text-emerald-900 font-black cursor-pointer"
+                        className="ml-1 text-emerald-700 hover:text-red-700 font-black cursor-pointer"
+                        title="Remove coordinates"
                       >
                         ×
                       </button>
@@ -1393,7 +1520,7 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                   <span className="text-[11px]">Document</span>
                 </button>
 
-                {/* GPS Location Button */}
+                {/* Share Coordinates GPS Button */}
                 <button
                   type="button"
                   onClick={handleAttachLocation}
@@ -1403,10 +1530,10 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
                       ? 'bg-emerald-700 text-white border-emerald-800 font-bold'
                       : 'bg-zinc-100 hover:bg-zinc-200 text-zinc-700 border-zinc-200'
                   }`}
-                  title="Attach GPS coordinates"
+                  title="Share GPS coordinates so others can click and get Google Maps directions"
                 >
                   <MapPin className={`w-3.5 h-3.5 shrink-0 ${attachedLocation ? 'text-white' : 'text-red-600'}`} />
-                  <span className="text-[11px]">{attachedLocation ? 'GPS Attached' : 'Attach GPS'}</span>
+                  <span className="text-[11px]">{attachedLocation ? 'Coordinates Attached' : 'Share Coordinates'}</span>
                 </button>
 
                 {/* Tag Incident Button */}
@@ -1482,6 +1609,8 @@ export const CommunityChatView: React.FC<CommunityChatViewProps> = ({
         allUsers={userList}
         onlineUserIds={onlineUserIds}
         currentUser={currentUser}
+        activeCalls={channelActiveCalls}
+        onJoinExistingCall={(call) => callService.joinGroupCall(call)}
         onStartGroupCall={handleStartGroupCall}
         onStartDirectCall={handleStartDirectCall}
       />

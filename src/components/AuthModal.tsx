@@ -15,6 +15,8 @@ import { googleSignIn } from '../services/firebaseAuth';
 import { registerCurrentDeviceLogin } from '../services/deviceTrackingService';
 import { NAIROBI_COORDINATES, getStoredLastKnownLocation } from '../services/locationService';
 import { saveUserToDb, getAllUsersFromDb, authenticateWithEmailOrPhone } from '../services/db';
+import { ResetPasswordModal } from './ResetPasswordModal';
+import { sendEmailVerificationCode, verifyEmailCode } from '../services/emailAuthService';
 
 const SAVED_PROFILES_KEY = 'kaa_rada_saved_profiles_v2';
 
@@ -55,8 +57,22 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   const [emailAddress, setEmailAddress] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [designation, setDesignation] = useState('');
+
+  // Email Verification Code State
+  const [emailVerificationCode, setEmailVerificationCode] = useState('');
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
+  const [isSendingEmailCode, setIsSendingEmailCode] = useState(false);
+  const [isVerifyingEmailCode, setIsVerifyingEmailCode] = useState(false);
+  const [emailCodeSent, setEmailCodeSent] = useState(false);
+  const [emailCodePreview, setEmailCodePreview] = useState<string | null>(null);
+  const [emailResendCooldown, setEmailResendCooldown] = useState(0);
+
+  // Forgot Password Modal State
+  const [isResetPasswordOpen, setIsResetPasswordOpen] = useState(false);
 
   // Login State: Email or Phone Number + Password
   const [loginIdentifier, setLoginIdentifier] = useState('');
@@ -117,6 +133,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     };
   }, []);
 
+  // Countdown timer for email code resend
+  useEffect(() => {
+    let timer: NodeJS.Timeout;
+    if (emailResendCooldown > 0) {
+      timer = setTimeout(() => setEmailResendCooldown(emailResendCooldown - 1), 1000);
+    }
+    return () => clearTimeout(timer);
+  }, [emailResendCooldown]);
+
   useEffect(() => {
     if (isOpen) {
       setAuthMode(currentUser ? 'profile' : 'signup');
@@ -125,6 +150,65 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setIsOtpSent(false);
     }
   }, [isOpen, currentUser]);
+
+  /**
+   * Send 6-digit verification code to user's real email
+   */
+  const handleSendEmailVerification = async () => {
+    setLoginError(null);
+    const cleanEmail = emailAddress.trim().toLowerCase();
+
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setLoginError('Please enter a valid real email address (e.g. name@gmail.com) to receive the code.');
+      return;
+    }
+
+    setIsSendingEmailCode(true);
+    try {
+      const result = await sendEmailVerificationCode(cleanEmail, 'signup_verification', fullName.trim());
+      if (result.success) {
+        setEmailCodeSent(true);
+        if (result.previewCode) {
+          setEmailCodePreview(result.previewCode);
+        }
+        setEmailResendCooldown(60);
+      } else {
+        setLoginError(result.message || 'Failed to send verification code. Please try again.');
+      }
+    } catch (err: any) {
+      setLoginError(err?.message || 'Error dispatching verification code.');
+    } finally {
+      setIsSendingEmailCode(false);
+    }
+  };
+
+  /**
+   * Confirm the 6-digit email code
+   */
+  const handleConfirmEmailCode = async () => {
+    setLoginError(null);
+    const cleanEmail = emailAddress.trim().toLowerCase();
+    const cleanCode = emailVerificationCode.trim();
+
+    if (!cleanCode) {
+      setLoginError('Please enter the 6-digit verification code sent to your email.');
+      return;
+    }
+
+    setIsVerifyingEmailCode(true);
+    try {
+      const result = await verifyEmailCode(cleanEmail, cleanCode, 'signup_verification');
+      if (result.verified) {
+        setIsEmailVerified(true);
+      } else {
+        setLoginError(result.message || 'Invalid verification code. Please check your email.');
+      }
+    } catch (err: any) {
+      setLoginError(err?.message || 'Verification failed. Please try again.');
+    } finally {
+      setIsVerifyingEmailCode(false);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -210,17 +294,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     setLoginError(null);
 
     const cleanName = fullName.trim();
-    const cleanEmail = emailAddress.trim();
+    const cleanEmail = emailAddress.trim().toLowerCase();
     const cleanPhone = phoneNumber.trim();
     const cleanPass = password.trim();
-    const cleanDesignation = designation.trim();
+    const cleanConfirm = confirmPassword.trim();
+    const cleanDesignation = designation.trim() || (selectedRole === 'super_user' ? 'Field Security Officer' : 'Community Member');
 
     if (!cleanName) {
       setLoginError('Please provide your Full Name.');
       return;
     }
-    if (!cleanPhone || cleanPhone.length < 9) {
-      setLoginError('Please provide a valid active phone number for SMS and alerts.');
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setLoginError('Please enter a valid real email address to complete your registration.');
       return;
     }
     if (!cleanPass) {
@@ -231,8 +316,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       setLoginError('Password must be at least 4 characters long.');
       return;
     }
-    if (!cleanDesignation) {
-      setLoginError('Please provide your designation (e.g. Village Elder, Area Chief, OCS, Donkey Owner).');
+    if (cleanConfirm && cleanPass !== cleanConfirm) {
+      setLoginError('Passwords do not match. Please verify your password confirmation.');
       return;
     }
 
@@ -596,49 +681,96 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 </div>
               </div>
 
-              {/* Email Address */}
+              {/* Real Email Address + Verification Trigger */}
               <div>
-                <label className="block text-xs font-bold text-zinc-700 mb-1">
-                  Email Address (Barua Pepe)
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-zinc-700">
+                    Real Email Address (Barua Pepe) *
+                  </label>
+                  {isEmailVerified && (
+                    <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full flex items-center gap-1">
+                      <Check className="w-3 h-3" />
+                      <span>Verified</span>
+                    </span>
+                  )}
+                </div>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
                     <Mail className="w-4 h-4" />
                   </div>
                   <input
                     type="email"
-                    value={emailAddress}
-                    onChange={(e) => setEmailAddress(e.target.value)}
-                    placeholder="e.g. user@gmail.com"
-                    className="w-full pl-9 pr-3 py-2.5 text-xs bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-[#991B1B] outline-none font-medium text-zinc-900"
-                  />
-                </div>
-              </div>
-
-              {/* Phone Number */}
-              <div>
-                <label className="block text-xs font-bold text-zinc-700 mb-1">
-                  Phone Number (Nambari ya Simu) *
-                </label>
-                <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
-                    <Phone className="w-4 h-4" />
-                  </div>
-                  <input
-                    type="tel"
                     required
-                    value={phoneNumber}
-                    onChange={(e) => setPhoneNumber(e.target.value)}
-                    placeholder="e.g. 0712 345 678"
-                    className="w-full pl-9 pr-3 py-2.5 text-xs bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-[#991B1B] outline-none font-mono font-medium text-zinc-900"
+                    value={emailAddress}
+                    onChange={(e) => {
+                      setEmailAddress(e.target.value);
+                      setIsEmailVerified(false);
+                      setLoginError(null);
+                    }}
+                    placeholder="e.g. morrismariko@gmail.com"
+                    className="w-full pl-9 pr-24 py-2.5 text-xs bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-[#991B1B] outline-none font-medium text-zinc-900"
                   />
+                  {!isEmailVerified && (
+                    <button
+                      type="button"
+                      disabled={isSendingEmailCode || emailResendCooldown > 0}
+                      onClick={handleSendEmailVerification}
+                      className="absolute inset-y-1.5 right-1.5 px-2.5 bg-zinc-900 hover:bg-zinc-800 active:scale-95 text-white text-[10px] font-black rounded-lg transition-all flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                    >
+                      {isSendingEmailCode ? (
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Send className="w-3 h-3" />
+                      )}
+                      <span>
+                        {emailResendCooldown > 0 ? `${emailResendCooldown}s` : 'Get Code'}
+                      </span>
+                    </button>
+                  )}
                 </div>
+
+                {/* Email Verification Code Row */}
+                {emailCodeSent && !isEmailVerified && (
+                  <div className="mt-2 p-2.5 bg-zinc-50 border border-zinc-200 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between text-[11px] text-zinc-600">
+                      <span>Enter the 6-digit code sent to your inbox:</span>
+                      {emailCodePreview && (
+                        <button
+                          type="button"
+                          onClick={() => setEmailVerificationCode(emailCodePreview)}
+                          className="text-[#991B1B] font-bold underline text-[10px] cursor-pointer"
+                        >
+                          Auto-fill: {emailCodePreview}
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        maxLength={6}
+                        value={emailVerificationCode}
+                        onChange={(e) => setEmailVerificationCode(e.target.value.replace(/\D/g, ''))}
+                        placeholder="6-digit code"
+                        className="flex-1 px-3 py-1.5 text-center font-mono font-bold tracking-widest text-xs bg-white border border-zinc-300 rounded-lg outline-none focus:ring-2 focus:ring-[#991B1B]"
+                      />
+                      <button
+                        type="button"
+                        disabled={isVerifyingEmailCode || !emailVerificationCode}
+                        onClick={handleConfirmEmailCode}
+                        className="px-3 py-1.5 bg-[#991B1B] hover:bg-[#7F1D1D] text-white text-xs font-bold rounded-lg transition-all cursor-pointer disabled:opacity-50 flex items-center gap-1"
+                      >
+                        {isVerifyingEmailCode ? <RefreshCw className="w-3 h-3 animate-spin" /> : <ShieldCheck className="w-3.5 h-3.5" />}
+                        <span>Verify</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
-              {/* Password */}
+              {/* Set Up Your Own Password */}
               <div>
                 <label className="block text-xs font-bold text-zinc-700 mb-1">
-                  Password (Nenosiri) *
+                  Create Your Password (Nenosiri Lako) *
                 </label>
                 <div className="relative">
                   <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
@@ -649,7 +781,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                     required
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Create a secure password (min 4 chars)"
+                    placeholder="Choose your password (min 4 characters)"
                     className="w-full pl-9 pr-10 py-2.5 text-xs bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-[#991B1B] outline-none font-medium text-zinc-900"
                   />
                   <button
@@ -659,6 +791,55 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
+                </div>
+              </div>
+
+              {/* Confirm Password */}
+              <div>
+                <label className="block text-xs font-bold text-zinc-700 mb-1">
+                  Confirm Password (Thibitisha Nenosiri) *
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
+                    <Lock className="w-4 h-4" />
+                  </div>
+                  <input
+                    type={showConfirmPassword ? 'text' : 'password'}
+                    required
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    placeholder="Re-enter your password"
+                    className="w-full pl-9 pr-10 py-2.5 text-xs bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-[#991B1B] outline-none font-medium text-zinc-900"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute inset-y-0 right-0 pr-3 flex items-center text-zinc-400 hover:text-zinc-600 cursor-pointer"
+                  >
+                    {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Phone Number */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-zinc-700">
+                    Phone Number (Nambari ya Simu)
+                  </label>
+                  <span className="text-[10px] text-zinc-400">Optional for SMS alerts</span>
+                </div>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
+                    <Phone className="w-4 h-4" />
+                  </div>
+                  <input
+                    type="tel"
+                    value={phoneNumber}
+                    onChange={(e) => setPhoneNumber(e.target.value)}
+                    placeholder="e.g. 0712 345 678"
+                    className="w-full pl-9 pr-3 py-2.5 text-xs bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-[#991B1B] outline-none font-mono font-medium text-zinc-900"
+                  />
                 </div>
               </div>
 
@@ -870,28 +1051,42 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </div>
 
                   {loginMethod === 'password' ? (
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
-                        <Lock className="w-4 h-4" />
+                    <div>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-zinc-400">
+                          <Lock className="w-4 h-4" />
+                        </div>
+                        <input
+                          type={showLoginPassword ? 'text' : 'password'}
+                          required
+                          value={loginPassword}
+                          onChange={(e) => {
+                            setLoginPassword(e.target.value);
+                            setLoginError(null);
+                          }}
+                          placeholder="Enter your password (default 1234 or admin)"
+                          className="w-full pl-9 pr-10 py-2.5 text-xs bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-[#991B1B] outline-none font-medium text-zinc-900"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowLoginPassword(!showLoginPassword)}
+                          className="absolute inset-y-0 right-0 pr-3 flex items-center text-zinc-400 hover:text-zinc-600 cursor-pointer"
+                        >
+                          {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
                       </div>
-                      <input
-                        type={showLoginPassword ? 'text' : 'password'}
-                        required
-                        value={loginPassword}
-                        onChange={(e) => {
-                          setLoginPassword(e.target.value);
-                          setLoginError(null);
-                        }}
-                        placeholder="Enter your password (default 1234 or admin)"
-                        className="w-full pl-9 pr-10 py-2.5 text-xs bg-zinc-50 border border-zinc-200 rounded-xl focus:ring-2 focus:ring-[#991B1B] outline-none font-medium text-zinc-900"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowLoginPassword(!showLoginPassword)}
-                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-zinc-400 hover:text-zinc-600 cursor-pointer"
-                      >
-                        {showLoginPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
+
+                      {/* Forgot Password Link */}
+                      <div className="flex items-center justify-end mt-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setIsResetPasswordOpen(true)}
+                          className="text-[11px] font-bold text-[#991B1B] hover:text-[#7F1D1D] hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <KeyRound className="w-3 h-3" />
+                          <span>Forgot Password? (Umesahau nenosiri?)</span>
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-2">
@@ -1003,6 +1198,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               </div>
 
               <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onSelectUser(currentUser);
+                  }}
+                  className="w-full py-2.5 bg-emerald-950 hover:bg-emerald-900 text-emerald-300 font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 border border-emerald-700/60 cursor-pointer shadow-xs transition-colors"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Show Welcome Screen (Powered by Punda wangu AI)</span>
+                </button>
+
                 {onOpenChangePasswordModal && (
                   <button
                     onClick={() => {
@@ -1028,6 +1235,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* Reset Password Modal */}
+      <ResetPasswordModal
+        isOpen={isResetPasswordOpen}
+        onClose={() => setIsResetPasswordOpen(false)}
+        prefilledEmail={loginIdentifier.includes('@') ? loginIdentifier : ''}
+        onPasswordResetSuccess={(updatedUser) => {
+          setLoginIdentifier(updatedUser.email || updatedUser.phone || '');
+          setLoginPassword(updatedUser.password || '');
+          saveProfileToList(updatedUser);
+          capturePhoneLocationAndFinish(updatedUser);
+        }}
+      />
     </div>
   );
 };

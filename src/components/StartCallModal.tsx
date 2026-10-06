@@ -16,8 +16,9 @@ import {
   Tablet,
   Cpu
 } from 'lucide-react';
-import { UserProfile, ChatChannel, CallType, LoggedInDevice } from '../types';
+import { UserProfile, ChatChannel, CallType, LoggedInDevice, ActiveCallSession } from '../types';
 import { subscribeToLoggedInDevices, getOrCreateDeviceId } from '../services/deviceTrackingService';
+import { callService } from '../services/callService';
 
 interface StartCallModalProps {
   isOpen: boolean;
@@ -27,7 +28,9 @@ interface StartCallModalProps {
   allUsers: UserProfile[];
   onlineUserIds?: string[];
   currentUser: UserProfile | null;
+  activeCalls?: ActiveCallSession[];
   onStartGroupCall: (channel: ChatChannel, callType: CallType) => void;
+  onJoinExistingCall?: (call: ActiveCallSession) => void;
   onStartDirectCall: (
     targetUser: UserProfile, 
     callType: CallType, 
@@ -44,7 +47,9 @@ export const StartCallModal: React.FC<StartCallModalProps> = ({
   allUsers,
   onlineUserIds = [],
   currentUser,
+  activeCalls = [],
   onStartGroupCall,
+  onJoinExistingCall,
   onStartDirectCall,
 }) => {
   const [activeTab, setActiveTab] = useState<'group' | 'direct' | 'devices'>('group');
@@ -218,30 +223,76 @@ export const StartCallModal: React.FC<StartCallModalProps> = ({
                 </div>
               </div>
 
-              {/* Group Call Start Buttons */}
-              <div className="pt-2 space-y-2">
-                <button
-                  onClick={() => {
-                    onStartGroupCall(targetChannel, 'video');
-                    onClose();
-                  }}
-                  className="w-full py-3 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm transition-all active:scale-98 cursor-pointer"
-                >
-                  <Video className="w-4 h-4" />
-                  <span>Start Group Video Call in #{targetChannel.name}</span>
-                </button>
+              {/* Group Call Start or Join Buttons */}
+              {(() => {
+                const existingGroupCall = activeCalls?.find(
+                  c => c.isGroup && (c.channelId === selectedChannelId || (!c.channelId && selectedChannelId === 'general')) && c.status !== 'ended' && c.status !== 'rejected'
+                );
 
-                <button
-                  onClick={() => {
-                    onStartGroupCall(targetChannel, 'audio');
-                    onClose();
-                  }}
-                  className="w-full py-2.5 px-4 rounded-2xl bg-zinc-100 hover:bg-zinc-200 text-zinc-800 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 border border-zinc-300 transition-all active:scale-98 cursor-pointer"
-                >
-                  <Phone className="w-4 h-4 text-emerald-700" />
-                  <span>Start Group Voice-Only Call (Low Data)</span>
-                </button>
-              </div>
+                if (existingGroupCall) {
+                  return (
+                    <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-950 space-y-2.5 animate-in fade-in">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-black flex items-center gap-1.5 text-amber-900">
+                          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping inline-block" />
+                          Active Group Call in Progress
+                        </span>
+                        <span className="text-[10px] font-bold bg-amber-200/80 text-amber-900 px-2 py-0.5 rounded-full">
+                          {existingGroupCall.participants?.length || 1} participant{existingGroupCall.participants?.length === 1 ? '' : 's'}
+                        </span>
+                      </div>
+                      <p className="text-xs text-amber-900 leading-relaxed">
+                        <strong>Notice:</strong> Only one user can initiate a group call in <strong>#{targetChannel.name}</strong> at a given time. <strong>{existingGroupCall.initiator.name}</strong> has already initiated this call. You can join the ongoing session now!
+                      </p>
+                      <button
+                        onClick={() => {
+                          if (onJoinExistingCall) {
+                            onJoinExistingCall(existingGroupCall);
+                          } else {
+                            callService.joinGroupCall(existingGroupCall);
+                          }
+                          onClose();
+                        }}
+                        className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm transition-all active:scale-98 cursor-pointer"
+                      >
+                        {existingGroupCall.callType === 'video' ? <Video className="w-4 h-4" /> : <Phone className="w-4 h-4" />}
+                        <span>Join Ongoing Group {existingGroupCall.callType === 'video' ? 'Video' : 'Voice'} Call</span>
+                      </button>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="pt-2 space-y-2">
+                    <div className="px-2.5 py-1.5 rounded-xl bg-emerald-50/70 border border-emerald-200/80 text-[11px] text-emerald-900 flex items-center gap-1.5">
+                      <Shield className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                      <span>Only one user can initiate a group call in this channel at a given time. The rest can join once started.</span>
+                    </div>
+
+                    <button
+                      onClick={() => {
+                        onStartGroupCall(targetChannel, 'video');
+                        onClose();
+                      }}
+                      className="w-full py-3 px-4 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm transition-all active:scale-98 cursor-pointer"
+                    >
+                      <Video className="w-4 h-4" />
+                      <span>Start Group Video Call in #{targetChannel.name}</span>
+                    </button>
+
+                    <button
+                      onClick={() => {
+                        onStartGroupCall(targetChannel, 'audio');
+                        onClose();
+                      }}
+                      className="w-full py-2.5 px-4 rounded-2xl bg-zinc-100 hover:bg-zinc-200 text-zinc-800 font-bold text-xs sm:text-sm flex items-center justify-center gap-2 border border-zinc-300 transition-all active:scale-98 cursor-pointer"
+                    >
+                      <Phone className="w-4 h-4 text-emerald-700" />
+                      <span>Start Group Voice-Only Call (Low Data)</span>
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
           )}
 

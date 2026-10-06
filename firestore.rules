@@ -31,6 +31,11 @@ service cloud.firestore {
       allow read, write, delete: if true;
     }
 
+    // DIRA Email Verification & Password Reset Security Codes
+    match /dira_verification_codes/{codeId} {
+      allow read, write, delete: if true;
+    }
+
     // User Accounts Collections (Super Admin and user sign-ups stored in Firestore)
     match /dira_users/{userId} {
       allow read, write, delete: if true;

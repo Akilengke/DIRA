@@ -72,7 +72,23 @@ export const NearbySuperUsersMapSection: React.FC<NearbySuperUsersMapSectionProp
 
   useEffect(() => {
     const unsub = subscribeToLoggedInDevices((fresh) => {
-      setStoredDevices(fresh);
+      setStoredDevices((prev) => {
+        if (prev.length === fresh.length) {
+          const isIdentical = prev.every((p, idx) => {
+            const f = fresh[idx];
+            return (
+              f &&
+              p.deviceId === f.deviceId &&
+              p.userId === f.userId &&
+              p.isOnline === f.isOnline &&
+              Math.abs((p.coordinates?.lat || 0) - (f.coordinates?.lat || 0)) < 0.00001 &&
+              Math.abs((p.coordinates?.lng || 0) - (f.coordinates?.lng || 0)) < 0.00001
+            );
+          });
+          if (isIdentical) return prev;
+        }
+        return fresh;
+      });
     });
     return unsub;
   }, []);

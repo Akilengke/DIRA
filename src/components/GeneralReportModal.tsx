@@ -483,6 +483,7 @@ ${matchingCases.map(c => `- #${c.trackingCode} | ${c.title} | ${c.category} | ${
             </div>
             <ul className="list-disc list-inside space-y-1 text-[11px] text-zinc-500 pl-1">
               <li><strong>Official Caritas Kitui & DIRA institutional letterhead and logos</strong> on every page (Weekly, Monthly, Quarterly, Annual, and All-Time reports)</li>
+              <li><strong>Visual analytics & crime trend graphs</strong> — high-resolution timeline frequency curves and comparative category breakdown charts embedded on all reports</li>
               <li><strong>Field photographic evidence gallery</strong> — all scene and enforcement action photos included automatically whenever cases have photos</li>
               <li>Executive KPI summary (Total volume, donkeys recovered, resolution metrics)</li>
               <li>Complete crime & welfare breakdown by category (theft, slaughter, transit, abuse)</li>

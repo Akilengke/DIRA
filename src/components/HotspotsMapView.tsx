@@ -3,7 +3,8 @@ import {
   MapPin, Filter, Layers, Navigation, ZoomIn, ZoomOut, 
   Info, AlertTriangle, ShieldAlert, Skull, Truck, HeartCrack, 
   ChevronRight, X, PhoneCall, ExternalLink, Compass, Plus, RotateCcw,
-  Shield, Radio, Zap, Lock, Smartphone, Tablet, Monitor, Flame, LogOut
+  Shield, Radio, Zap, Lock, Smartphone, Tablet, Monitor, Flame, LogOut,
+  HardDrive, Wifi, WifiOff
 } from 'lucide-react';
 import { DonkeyCase, CaseCategory, UserProfile, Coordinates, BackgroundLocationSettings, LoggedInDevice } from '../types';
 import { 
@@ -31,8 +32,13 @@ import {
   isSuperAdmin,
   adminForceLogoutDevice,
 } from '../services/deviceTrackingService';
+import {
+  createCachedTileLayer,
+  getOfflineTileStats,
+} from '../services/offlineMapCacheService';
 import { NearbySuperUsersMapSection } from './NearbySuperUsersMapSection';
 import { RemoteLogoutConfirmModal } from './RemoteLogoutConfirmModal';
+import { OfflineMapCacheModal } from './OfflineMapCacheModal';
 
 // Leaflet dynamic imports / globals
 declare global {
@@ -189,23 +195,83 @@ export const HotspotsMapView: React.FC<HotspotsMapViewProps> = ({
   const [deviceToLogout, setDeviceToLogout] = useState<LoggedInDevice | null>(null);
   const [logoutSuccessMessage, setLogoutSuccessMessage] = useState<string | null>(null);
 
+  // Offline Map Tile Cache State for rural Kitui intermittent connectivity
+  const [offlineStats, setOfflineStats] = useState<{ count: number; estimatedSizeMb: number }>({ count: 0, estimatedSizeMb: 0 });
+  const [isOfflineModalOpen, setIsOfflineModalOpen] = useState(false);
+  const [isOnline, setIsOnline] = useState<boolean>(() => (typeof navigator !== 'undefined' ? navigator.onLine : true));
+  const [offlineToastMessage, setOfflineToastMessage] = useState<string | null>(null);
+
+  // Connectivity change listener
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      setOfflineToastMessage('Internet reconnected. Live map synchronization resumed.');
+      setTimeout(() => setOfflineToastMessage(null), 3500);
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      setOfflineToastMessage('Intermittent network detected. Rural Kitui offline map cache active.');
+      setTimeout(() => setOfflineToastMessage(null), 4500);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Fetch initial offline tile stats
+  useEffect(() => {
+    getOfflineTileStats().then(setOfflineStats).catch(() => {});
+  }, []);
+
   useEffect(() => {
     const unsub = subscribeToLoggedInDevices((fresh) => {
-      setStoredDevices(fresh);
+      setStoredDevices((prev) => {
+        if (prev.length === fresh.length) {
+          const isIdentical = prev.every((p, idx) => {
+            const f = fresh[idx];
+            return (
+              f &&
+              p.deviceId === f.deviceId &&
+              p.userId === f.userId &&
+              p.isOnline === f.isOnline &&
+              Math.abs((p.coordinates?.lat || 0) - (f.coordinates?.lat || 0)) < 0.00001 &&
+              Math.abs((p.coordinates?.lng || 0) - (f.coordinates?.lng || 0)) < 0.00001
+            );
+          });
+          if (isIdentical) return prev;
+        }
+        return fresh;
+      });
     });
     return unsub;
   }, []);
 
-  // Synchronize when a device is logged out remotely
+  // Synchronize when a device is logged out remotely or locally
   useEffect(() => {
     const handleRemoteLogout = (ev: Event) => {
       const detail = (ev as CustomEvent).detail;
-      if (detail?.deviceId) {
+      if (detail?.deviceId || detail?.userId) {
         setStoredDevices((prev) =>
-          prev.filter((d) => d && d.deviceId !== detail.deviceId && (!detail.userId || d.userId !== detail.userId))
+          prev.filter(
+            (d) =>
+              d &&
+              d.deviceId !== detail.deviceId &&
+              !d.deviceId.startsWith(detail.deviceId) &&
+              !d.deviceId.includes(detail.deviceId) &&
+              (!detail.userId || d.userId !== detail.userId)
+          )
         );
         setSelectedDevice((curr) => {
-          if (curr && (curr.deviceId === detail.deviceId || curr.userId === detail.userId)) {
+          if (
+            curr &&
+            (curr.deviceId === detail.deviceId ||
+              curr.deviceId.startsWith(detail.deviceId) ||
+              curr.userId === detail.userId)
+          ) {
             return null;
           }
           return curr;
@@ -280,7 +346,8 @@ export const HotspotsMapView: React.FC<HotspotsMapViewProps> = ({
         !isSampleDevice(d) &&
         d.isOnline !== false &&
         d.deviceId !== thisDeviceId &&
-        !d.deviceId.startsWith(thisDeviceId)
+        !d.deviceId.startsWith(thisDeviceId) &&
+        !d.deviceId.includes(thisDeviceId)
     );
   }, [storedDevices, currentUser, userCoordinates, userAccuracy, locInfo]);
 
@@ -425,13 +492,25 @@ export const HotspotsMapView: React.FC<HotspotsMapViewProps> = ({
       keyboard: true,
     });
 
-    // Standard OpenStreetMap public tiles - Free, reliable, NO API KEY REQUIRED
-    const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      subdomains: ['a', 'b', 'c'],
-      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> | Caritas Kitui',
-    });
-    osmLayer.addTo(map);
+    // Offline-cached Leaflet Tile Layer for rural Kitui intermittent network coverage
+    try {
+      const cachedOsmLayer = createCachedTileLayer(
+        L,
+        'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        {
+          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> | Caritas Kitui (Offline Cache Active)',
+        }
+      );
+      cachedOsmLayer.addTo(map);
+    } catch (err) {
+      console.warn('Fallback to standard OSM tile layer:', err);
+      const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        subdomains: ['a', 'b', 'c'],
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> | Caritas Kitui',
+      });
+      osmLayer.addTo(map);
+    }
 
     // Zoom Controls on top right
     L.control.zoom({ position: 'topright' }).addTo(map);
@@ -1438,15 +1517,57 @@ export const HotspotsMapView: React.FC<HotspotsMapViewProps> = ({
                   <span>Logged-In Devices ({activeDevices.length})</span>
                 </button>
 
-                <div
-                  className="px-2.5 py-1 rounded-xl font-bold flex items-center gap-1.5 bg-blue-950 text-blue-200 border border-blue-800 shadow-2xs select-none cursor-default"
-                  title="My Live GPS is permanently active for community emergency response and proximity responder allocation"
+                {/* Offline Map Cache Pill for Rural Kitui */}
+                <button
+                  onClick={() => setIsOfflineModalOpen(true)}
+                  className={`px-2.5 py-1 rounded-xl font-bold flex items-center gap-1.5 transition-all ${
+                    !isOnline
+                      ? 'bg-amber-950 text-amber-300 border border-amber-800 shadow-2xs'
+                      : offlineStats.count > 0
+                      ? 'bg-cyan-950 text-cyan-200 border border-cyan-800 shadow-2xs'
+                      : 'bg-zinc-100 text-zinc-600 hover:bg-zinc-200'
+                  }`}
+                  title="Rural Kitui Offline Leaflet Tile Layer Cache"
                 >
-                  <span className="w-2 h-2 rounded-full bg-blue-400 animate-ping" />
+                  {!isOnline ? (
+                    <WifiOff className="w-3.5 h-3.5 text-amber-400 animate-pulse" />
+                  ) : (
+                    <HardDrive className="w-3.5 h-3.5 text-cyan-400" />
+                  )}
+                  <span>
+                    {!isOnline
+                      ? 'Offline Mode'
+                      : offlineStats.count > 0
+                      ? `Offline Cache (${offlineStats.count})`
+                      : 'Offline Cache'}
+                  </span>
+                </button>
+
+                <div
+                  className={`px-2.5 py-1 rounded-xl font-bold flex items-center gap-1.5 border shadow-2xs select-none cursor-default ${
+                    currentUser
+                      ? 'bg-blue-950 text-blue-200 border-blue-800'
+                      : 'bg-zinc-100 text-zinc-500 border-zinc-300'
+                  }`}
+                  title={
+                    currentUser
+                      ? 'My Live GPS is active for community emergency response and proximity responder allocation'
+                      : 'Location tracking ceases when logged out until you log in again'
+                  }
+                >
+                  {currentUser ? (
+                    <span className="w-2 h-2 rounded-full bg-blue-400 animate-ping" />
+                  ) : (
+                    <span className="w-2 h-2 rounded-full bg-zinc-400" />
+                  )}
                   <span className="flex items-center gap-1">
                     <span>My Live GPS:</span>
-                    <span className="text-emerald-400 text-[10px] uppercase tracking-wider font-black flex items-center gap-0.5">
-                      <Lock className="w-2.5 h-2.5" /> ALWAYS ON
+                    <span
+                      className={`text-[10px] uppercase tracking-wider font-black flex items-center gap-0.5 ${
+                        currentUser ? 'text-emerald-400' : 'text-zinc-500'
+                      }`}
+                    >
+                      <Lock className="w-2.5 h-2.5" /> {currentUser ? 'ACTIVE' : 'OFF (LOGGED OUT)'}
                     </span>
                   </span>
                 </div>
@@ -1896,7 +2017,32 @@ export const HotspotsMapView: React.FC<HotspotsMapViewProps> = ({
         )}
       />
 
-      {/* 7. Success Toast Notification for Admin Actions */}
+      {/* 7. Rural Kitui Offline Leaflet Tile Layer Cache Modal */}
+      <OfflineMapCacheModal
+        isOpen={isOfflineModalOpen}
+        onClose={() => setIsOfflineModalOpen(false)}
+        offlineStats={offlineStats}
+        onStatsUpdate={(fresh) => setOfflineStats(fresh)}
+        isOnline={isOnline}
+      />
+
+      {/* 8. Connectivity / Offline Map Notification Toast */}
+      {offlineToastMessage && (
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 max-w-md w-[92%] sm:w-auto bg-zinc-950 text-white px-4 py-3 rounded-2xl shadow-2xl border border-zinc-700 flex items-center gap-3 animate-in fade-in slide-in-from-bottom-3 duration-200">
+          <div className="w-7 h-7 rounded-xl bg-cyan-950 text-cyan-400 border border-cyan-800 flex items-center justify-center shrink-0">
+            {isOnline ? <Wifi className="w-4 h-4 text-emerald-400" /> : <WifiOff className="w-4 h-4 text-amber-400" />}
+          </div>
+          <p className="text-xs text-zinc-200 font-medium flex-1">{offlineToastMessage}</p>
+          <button
+            onClick={() => setOfflineToastMessage(null)}
+            className="text-zinc-400 hover:text-white text-xs font-bold px-1"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
+      {/* 9. Success Toast Notification for Admin Actions */}
       {logoutSuccessMessage && (
         <div className="fixed bottom-6 right-6 z-50 max-w-sm bg-zinc-900 text-white p-3.5 rounded-2xl shadow-xl border border-zinc-700 flex items-center gap-2.5 animate-in slide-in-from-bottom-3 duration-200">
           <span className="text-emerald-400 font-bold text-sm">✓</span>

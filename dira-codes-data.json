@@ -1,0 +1,9 @@
+[
+  {
+    "email": "test@example.com",
+    "code": "899846",
+    "purpose": "signup_verification",
+    "createdAt": 1789985943077,
+    "expiresAt": 1789986843077
+  }
+]

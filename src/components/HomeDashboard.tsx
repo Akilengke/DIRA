@@ -11,6 +11,7 @@ import { HotspotsMapView } from './HotspotsMapView';
 import { WeeklyIncidentChart } from './WeeklyIncidentChart';
 import { GeneralReportModal } from './GeneralReportModal';
 import { detectLocationInfo } from '../services/locationService';
+import { PushNotificationManager } from './PushNotificationManager';
 import donkeyHeroImage from '../assets/images/donkey_hero_banner_1788697782238.jpg';
 
 interface HomeDashboardProps {
@@ -129,6 +130,9 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* 2. Phone Closed Background Push Notification Setup / Status Banner */}
+      <PushNotificationManager currentUser={currentUser} compact={true} />
 
       {/* 4. Super User Officer Alert Banner (Only shown if logged in as super user) */}
       {isSuperUser && (

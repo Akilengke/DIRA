@@ -2,6 +2,7 @@ import { getFirestore, collection, doc, setDoc, getDocs, onSnapshot, deleteDoc, 
 import { firebaseApp } from './firebaseAuth';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { DonkeyCase, UserProfile, DiraMessage } from '../types';
+export type { UserProfile } from '../types';
 export { SUPER_ADMIN_ACCOUNT } from '../data/mockData';
 import { SUPER_ADMIN_ACCOUNT } from '../data/mockData';
 
@@ -964,6 +965,33 @@ export async function findUserByEmailOrPhone(identifier: string): Promise<UserPr
       }
     } catch (err) {
       console.warn('Firestore user search fallback:', err);
+    }
+  }
+
+  // 4. Check Full-Stack Server User Registry in case user was saved via Express backend
+  if (typeof window !== 'undefined') {
+    try {
+      const res = await fetch('/api/users');
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.users)) {
+          const srvMatch = data.users.find((u: UserProfile) => {
+            if (u.email && u.email.toLowerCase() === lowerClean) return true;
+            if (u.phone) {
+              if (u.phone === clean) return true;
+              const dDigits = u.phone.replace(/\D/g, '');
+              if (cleanDigits.length >= 7 && (dDigits.includes(cleanDigits) || cleanDigits.includes(dDigits))) return true;
+            }
+            return false;
+          });
+          if (srvMatch) {
+            await saveUserToDb(srvMatch);
+            return srvMatch;
+          }
+        }
+      }
+    } catch (e) {
+      console.warn('Server user search fallback notice:', e);
     }
   }
 

@@ -175,6 +175,7 @@ export interface UserProfile {
   isOnline?: boolean;
   statusMessage?: string;
   activeAssignedCasesCount?: number;
+  updatedAt?: string;
 }
 
 export interface NearbyResponder {
@@ -262,6 +263,24 @@ export interface InAppNotification {
   isRead: boolean;
   reporterName?: string;
   reportedByCurrentUser?: boolean;
+  type?: 'case_reported' | 'case_allocated' | 'hourly_reminder';
+  allocatedToOfficerId?: string;
+  allocatedToOfficerName?: string;
+  reminderHourNumber?: number;
+  caseStatus?: CaseStatus;
+}
+
+export interface CaseReminderRecord {
+  caseId: string;
+  trackingCode: string;
+  officerId: string;
+  officerPhone?: string;
+  officerName?: string;
+  allocatedAt: string; // ISO string
+  lastRemindedAt?: string; // ISO string
+  remindersCount: number;
+  isResolved: boolean;
+  nextReminderDueAt: string; // ISO string
 }
 
 export interface VoiceNoteAttachment {
@@ -329,6 +348,7 @@ export interface CallParticipant {
   subCounty?: string;
   isMuted?: boolean;
   isVideoOff?: boolean;
+  isScreenSharing?: boolean;
   joinedAt?: string;
   isLocal?: boolean;
 }
@@ -358,6 +378,9 @@ export interface ActiveCallSession {
   status: CallStatus;
   startedAt: string;
   connectedAt?: string;
+  endedAt?: string;
+  endedReason?: string;
+  endedDuration?: string;
 }
 
 export interface CallSignalMessage {

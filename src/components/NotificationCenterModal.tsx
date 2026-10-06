@@ -14,14 +14,16 @@ import {
   VolumeX,
   ExternalLink
 } from 'lucide-react';
-import { InAppNotification, DonkeyCase } from '../types';
+import { InAppNotification, DonkeyCase, UserProfile } from '../types';
 import { CATEGORY_INFO } from '../data/mockData';
+import { PushNotificationManager } from './PushNotificationManager';
 
 interface NotificationCenterModalProps {
   isOpen: boolean;
   onClose: () => void;
   notifications: InAppNotification[];
   cases: DonkeyCase[];
+  currentUser?: UserProfile | null;
   onMarkAllAsRead: () => void;
   onMarkAsRead: (id: string) => void;
   onClearAll: () => void;
@@ -35,6 +37,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
   onClose,
   notifications,
   cases,
+  currentUser = null,
   onMarkAllAsRead,
   onMarkAsRead,
   onClearAll,
@@ -158,10 +161,14 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
           </div>
         </div>
 
-        {/* Notifications List */}
-        <div className="flex-1 overflow-y-auto divide-y divide-zinc-100 p-2 sm:p-3 space-y-1.5">
-          {notifications.length === 0 ? (
-            <div className="py-12 px-4 text-center space-y-3">
+        {/* Notifications List & Phone Background Alerts */}
+        <div className="flex-1 overflow-y-auto p-2 sm:p-3 space-y-3">
+          {/* Background Push Notification Control Card */}
+          <PushNotificationManager currentUser={currentUser} />
+
+          <div className="pt-1 border-t border-zinc-200/60 space-y-1.5 divide-y divide-zinc-100">
+            {notifications.length === 0 ? (
+              <div className="py-8 px-4 text-center space-y-3">
               <div className="w-12 h-12 rounded-full bg-zinc-100 text-zinc-400 flex items-center justify-center mx-auto">
                 <Bell className="w-6 h-6 opacity-60" />
               </div>
@@ -200,16 +207,36 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
 
                   {/* Icon */}
                   <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${
-                    isCritical
+                    notif.type === 'case_allocated'
+                      ? 'bg-red-600 text-white border-red-700 shadow-xs'
+                      : notif.type === 'hourly_reminder'
+                      ? 'bg-amber-500 text-zinc-950 border-amber-600 shadow-xs'
+                      : isCritical
                       ? 'bg-red-100 text-red-700 border-red-200'
                       : 'bg-zinc-100 text-zinc-700 border-zinc-200'
                   }`}>
-                    <AlertTriangle className="w-4 h-4" />
+                    {notif.type === 'case_allocated' ? (
+                      <Radio className="w-4 h-4 animate-pulse" />
+                    ) : notif.type === 'hourly_reminder' ? (
+                      <Clock className="w-4 h-4" />
+                    ) : (
+                      <AlertTriangle className="w-4 h-4" />
+                    )}
                   </div>
 
                   {/* Body */}
                   <div className="flex-1 min-w-0 pr-4 space-y-1">
                     <div className="flex items-center gap-1.5 flex-wrap">
+                      {notif.type === 'case_allocated' && (
+                        <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-red-600 text-white border border-red-700">
+                          🎯 Allocated to You
+                        </span>
+                      )}
+                      {notif.type === 'hourly_reminder' && (
+                        <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-amber-500 text-zinc-950 border border-amber-600">
+                          ⏰ Reminder #{notif.reminderHourNumber || 1}
+                        </span>
+                      )}
                       <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded bg-red-100 text-red-800 border border-red-200">
                         {catInfo.label}
                       </span>
@@ -246,6 +273,7 @@ export const NotificationCenterModal: React.FC<NotificationCenterModalProps> = (
               );
             })
           )}
+          </div>
         </div>
 
         {/* Footer */}

@@ -21,6 +21,12 @@ import {
 } from '../services/locationService';
 import { UserManagementView } from './UserManagementView';
 import { sortCasesLatestFirst, formatReportedDateTime, formatReportedRelative, formatReportedDate } from '../utils/dateUtils';
+import { 
+  isCaseAllocatedToUser, 
+  getCaseReminderRecord, 
+  formatNextReminderTime, 
+  calculateHoursSinceAllocation 
+} from '../services/caseReminderService';
 
 interface SuperUserDashboardProps {
   cases: DonkeyCase[];
@@ -38,6 +44,8 @@ interface SuperUserDashboardProps {
   onOpenChangePasswordModal?: () => void;
   onOpenDriveModal?: () => void;
   onNavigateToRadarMap?: () => void;
+  onTriggerTestReminder?: (caseItem: DonkeyCase) => void;
+  initialFilterStatus?: string;
 }
 
 export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
@@ -56,6 +64,8 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
   onOpenChangePasswordModal,
   onOpenDriveModal,
   onNavigateToRadarMap,
+  onTriggerTestReminder,
+  initialFilterStatus = 'all',
 }) => {
   const isSuperUser = 
     currentUser?.role === 'super_user' || 
@@ -66,7 +76,7 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
   const [adminSection, setAdminSection] = useState<'cases' | 'users'>('cases');
 
   const [selectedCaseId, setSelectedCaseId] = useState<string | null>(cases[0]?.id || null);
-  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>(initialFilterStatus);
   const [filterCategory, setFilterCategory] = useState<string>('all');
   const [filterSubCounty, setFilterSubCounty] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -136,11 +146,22 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
     }
   };
 
+  // Cases allocated to the active Super User
+  const casesAllocated = useMemo(() => {
+    return cases.filter((c) => isCaseAllocatedToUser(c, currentUser));
+  }, [cases, currentUser]);
+  const allocatedCount = casesAllocated.length;
+  const allocatedUnresolvedCount = casesAllocated.filter((c) => c.status !== 'resolved' && c.status !== 'dismissed').length;
+
   // Filter reported cases and arrange them strictly from latest to oldest
   const filteredCases = useMemo(() => {
     const list = cases.filter((c) => {
       if (!c) return false;
-      if (filterStatus !== 'all' && c.status !== filterStatus) return false;
+      if (filterStatus === 'allocated') {
+        if (!isCaseAllocatedToUser(c, currentUser)) return false;
+      } else if (filterStatus !== 'all' && c.status !== filterStatus) {
+        return false;
+      }
       if (filterCategory !== 'all' && c.category !== filterCategory) return false;
       if (filterSubCounty !== 'all' && c.location?.subCounty !== filterSubCounty) return false;
       if (searchQuery.trim()) {
@@ -153,7 +174,7 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
       return true;
     });
     return sortCasesLatestFirst(list);
-  }, [cases, filterStatus, filterCategory, filterSubCounty, searchQuery]);
+  }, [cases, filterStatus, filterCategory, filterSubCounty, searchQuery, currentUser]);
 
   const selectedCase = cases.find((c) => c.id === selectedCaseId) || filteredCases[0] || null;
 
@@ -396,24 +417,85 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
           </div>
         </div>
 
-        {/* Triage Metrics */}
-        <div className="grid grid-cols-4 gap-2 mt-4 pt-3 border-t border-zinc-800">
-          <div className="bg-zinc-900/80 p-2.5 rounded-xl border border-zinc-800">
+        {/* Triage Metrics including Cases Allocated */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 mt-4 pt-3 border-t border-zinc-800">
+          {/* Cases Allocated Card */}
+          <button
+            type="button"
+            id="metric-cases-allocated-btn"
+            onClick={() => setFilterStatus(filterStatus === 'allocated' ? 'all' : 'allocated')}
+            className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+              filterStatus === 'allocated'
+                ? 'bg-red-600 text-white border-red-400 shadow-md ring-2 ring-red-400'
+                : 'bg-red-950/80 hover:bg-red-900/90 border-red-700/80 text-white'
+            }`}
+            title="Filter by cases allocated to you"
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-[9px] font-black uppercase tracking-wider text-red-200 flex items-center gap-1">
+                <ShieldAlert className="w-3 h-3 text-red-300" />
+                Cases Allocated
+              </span>
+              {allocatedUnresolvedCount > 0 && (
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-400"></span>
+                </span>
+              )}
+            </div>
+            <div className="text-base sm:text-lg font-black text-white">{allocatedCount}</div>
+            <span className="text-[9px] text-red-200 block truncate font-medium">
+              {allocatedUnresolvedCount} pending action
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setFilterStatus('all')}
+            className={`bg-zinc-900/80 hover:bg-zinc-800/80 p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+              filterStatus === 'all' ? 'border-white/50 ring-1 ring-white/30' : 'border-zinc-800'
+            }`}
+          >
             <span className="text-[9px] font-bold text-zinc-400 uppercase">Total Reports</span>
             <div className="text-base sm:text-lg font-black text-white">{totalReportedCount}</div>
-          </div>
-          <div className="bg-red-950/40 p-2.5 rounded-xl border border-red-900/60">
+            <span className="text-[9px] text-zinc-500 block truncate">All registered</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setFilterStatus('reported')}
+            className={`bg-red-950/40 hover:bg-red-900/40 p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+              filterStatus === 'reported' ? 'border-red-500 ring-1 ring-red-400' : 'border-red-900/60'
+            }`}
+          >
             <span className="text-[9px] font-bold text-red-300 uppercase">Pending</span>
             <div className="text-base sm:text-lg font-black text-red-400">{pendingCount}</div>
-          </div>
-          <div className="bg-amber-950/30 p-2.5 rounded-xl border border-amber-900/40">
+            <span className="text-[9px] text-red-400/80 block truncate">New reports</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setFilterStatus('investigating')}
+            className={`bg-amber-950/30 hover:bg-amber-900/30 p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+              filterStatus === 'investigating' ? 'border-amber-500 ring-1 ring-amber-400' : 'border-amber-900/40'
+            }`}
+          >
             <span className="text-[9px] font-bold text-amber-300 uppercase">Investigating</span>
             <div className="text-base sm:text-lg font-black text-amber-400">{inProgressCount}</div>
-          </div>
-          <div className="bg-zinc-900/80 p-2.5 rounded-xl border border-zinc-800">
+            <span className="text-[9px] text-amber-400/80 block truncate">In field</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setFilterStatus('resolved')}
+            className={`bg-zinc-900/80 hover:bg-zinc-800/80 p-2.5 rounded-xl border text-left transition-all cursor-pointer ${
+              filterStatus === 'resolved' ? 'border-emerald-500 ring-1 ring-emerald-400' : 'border-zinc-800'
+            }`}
+          >
             <span className="text-[9px] font-bold text-emerald-400 uppercase">Resolved</span>
             <div className="text-base sm:text-lg font-black text-emerald-400">{resolvedCount}</div>
-          </div>
+            <span className="text-[9px] text-emerald-500/80 block truncate">Safeguarded</span>
+          </button>
         </div>
       </div>
 
@@ -499,6 +581,7 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
                   className="w-full px-2 py-1 text-[11px] bg-zinc-50 border border-zinc-200 rounded-lg text-zinc-800 font-medium"
                 >
                   <option value="all">All Statuses</option>
+                  <option value="allocated">🎯 Cases Allocated to Me ({allocatedCount})</option>
                   <option value="reported">Reported / Pending</option>
                   <option value="investigating">Investigating</option>
                   <option value="dispatched">Dispatched</option>
@@ -517,6 +600,38 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
                   <option value="general_abuse">Abuse / Sores</option>
                 </select>
               </div>
+
+              {/* Quick Filter Pill for Cases Allocated to Me */}
+              {allocatedCount > 0 && (
+                <div className="pt-1 border-t border-zinc-100 flex items-center gap-1.5 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setFilterStatus(filterStatus === 'allocated' ? 'all' : 'allocated')}
+                    className={`text-[11px] font-bold px-2.5 py-1 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer ${
+                      filterStatus === 'allocated'
+                        ? 'bg-red-700 text-white shadow-xs'
+                        : 'bg-red-50 text-red-900 border border-red-200 hover:bg-red-100'
+                    }`}
+                  >
+                    <ShieldAlert className="w-3.5 h-3.5 text-red-600" />
+                    <span>Cases Allocated to Me ({allocatedCount})</span>
+                    {allocatedUnresolvedCount > 0 && (
+                      <span className="bg-red-900 text-white text-[9px] px-1.5 py-0.2 rounded-full font-black">
+                        {allocatedUnresolvedCount} active
+                      </span>
+                    )}
+                  </button>
+                  {filterStatus === 'allocated' && (
+                    <button
+                      type="button"
+                      onClick={() => setFilterStatus('all')}
+                      className="text-[10px] text-zinc-500 hover:text-zinc-800 underline"
+                    >
+                      Clear filter
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Sorting indicator & Case Count */}
@@ -573,6 +688,42 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
                     <h4 className="text-xs font-bold text-zinc-950 line-clamp-1">
                       {c.title}
                     </h4>
+
+                    {/* Allocated to Super User Badge & Status */}
+                    {(() => {
+                      const isAllocatedToMe = isCaseAllocatedToUser(c, currentUser);
+                      if (!isAllocatedToMe) return null;
+                      const remRec = getCaseReminderRecord(c.id);
+                      const hoursPending = calculateHoursSinceAllocation(c.aiAllocation?.allocatedAt || c.reportedAt);
+
+                      return (
+                        <div className="space-y-1 mt-1.5">
+                          <div className="p-1.5 bg-red-950 text-white rounded-xl flex items-center justify-between gap-1 text-[10px] font-bold border border-red-700 shadow-2xs">
+                            <span className="flex items-center gap-1 text-red-200">
+                              <ShieldAlert className="w-3 h-3 text-red-400 shrink-0" />
+                              <span>Cases Allocated • Assigned to You</span>
+                            </span>
+                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-red-800 text-white font-extrabold uppercase">
+                              {c.status.replace('_', ' ')}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center justify-between text-[10px] px-1.5 py-0.5 rounded bg-amber-50 border border-amber-200 text-amber-900">
+                            <span className="flex items-center gap-1 font-semibold truncate">
+                              <Clock className="w-3 h-3 text-amber-600 shrink-0" />
+                              {c.status === 'resolved'
+                                ? 'Resolved • Reminders Stopped'
+                                : remRec?.remindersCount
+                                ? `Reminded ${remRec.remindersCount}x • Next ${formatNextReminderTime(remRec.nextReminderDueAt)}`
+                                : `Hourly Reminders Active • Next ${formatNextReminderTime(remRec?.nextReminderDueAt)}`}
+                            </span>
+                            <span className="text-[9px] font-bold text-amber-800 shrink-0">
+                              ~{hoursPending}h elapsed
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })()}
 
                     {/* Date Reported Indicator */}
                     <div className="flex items-center justify-between text-[10px] text-zinc-600 mt-1.5 pt-1.5 border-t border-zinc-100">
@@ -712,6 +863,83 @@ export const SuperUserDashboard: React.FC<SuperUserDashboardProps> = ({
                   <div className="bg-red-50 border border-red-200 text-red-800 p-2.5 rounded-xl text-xs font-semibold flex items-center gap-2 animate-in fade-in">
                     <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
                     <span>{driveExportError}</span>
+                  </div>
+                )}
+
+                {/* Cases Allocated Command Desk Banner */}
+                {isCaseAllocatedToUser(selectedCase, currentUser) && (
+                  <div className="bg-gradient-to-r from-red-950 via-zinc-950 to-red-950 text-white rounded-2xl p-4 border-2 border-red-600 shadow-md space-y-3">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2">
+                        <span className="relative flex h-2.5 w-2.5">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500"></span>
+                        </span>
+                        <span className="text-[11px] font-black uppercase tracking-wider text-red-300 bg-red-900/80 px-2 py-0.5 rounded border border-red-700">
+                          🎯 Case Allocated to You for Action
+                        </span>
+                        <span className="text-xs text-zinc-300">
+                          Status: <strong className="text-white uppercase font-black">{selectedCase.status.replace('_', ' ')}</strong>
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 text-[11px] text-amber-300 bg-amber-950/80 border border-amber-700 px-2.5 py-1 rounded-xl">
+                        <Clock className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        <span>
+                          {selectedCase.status === 'resolved' 
+                            ? 'Resolved (Reminders Stopped)' 
+                            : `Hourly Reminders Active • Next: ${formatNextReminderTime(getCaseReminderRecord(selectedCase.id)?.nextReminderDueAt)}`}
+                        </span>
+                      </div>
+                    </div>
+
+                    <p className="text-xs text-zinc-300 leading-relaxed">
+                      You are the lead responding Super User for this incident. Keep this case updated as field interventions occur. 
+                      The automated system will continue sending hourly reminders until marked resolved.
+                    </p>
+
+                    {/* Quick Status Changers for Super User */}
+                    {selectedCase.status !== 'resolved' && (
+                      <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-white/10">
+                        <span className="text-[11px] font-bold text-zinc-300 mr-1">Update Status:</span>
+                        <button
+                          type="button"
+                          onClick={() => onUpdateCaseStatus(selectedCase.id, 'investigating', `Status updated to Investigating by ${currentUser?.name || 'Officer'}`)}
+                          disabled={selectedCase.status === 'investigating'}
+                          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-[11px] font-bold px-3 py-1.5 rounded-xl transition-all active:scale-95 cursor-pointer shadow-xs"
+                        >
+                          Mark Investigating
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onUpdateCaseStatus(selectedCase.id, 'dispatched', `Status updated to Dispatched / En Route by ${currentUser?.name || 'Officer'}`)}
+                          disabled={selectedCase.status === 'dispatched'}
+                          className="bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-[11px] font-bold px-3 py-1.5 rounded-xl transition-all active:scale-95 cursor-pointer shadow-xs"
+                        >
+                          Mark Dispatched
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleOpenDirectResolve(selectedCase)}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-bold px-3 py-1.5 rounded-xl transition-all active:scale-95 flex items-center gap-1 cursor-pointer shadow-xs"
+                        >
+                          <CheckCheck className="w-3.5 h-3.5" />
+                          <span>Mark Resolved ✓</span>
+                        </button>
+
+                        {onTriggerTestReminder && selectedCase.status !== 'resolved' && (
+                          <button
+                            type="button"
+                            onClick={() => onTriggerTestReminder(selectedCase)}
+                            className="ml-auto bg-zinc-800 hover:bg-zinc-700 text-amber-300 border border-amber-600/50 text-[11px] font-bold px-2.5 py-1.5 rounded-xl transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                            title="Test the hourly reminder modal and notification audio right now"
+                          >
+                            <Clock className="w-3 h-3 text-amber-400" />
+                            <span>⚡ Test Hourly Reminder Now</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 

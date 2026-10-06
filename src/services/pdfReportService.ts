@@ -1,10 +1,16 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { DonkeyCase, CaseCategory } from '../types';
-import { CATEGORY_INFO, EMERGENCY_HOTLINE, HOTLINE_DISPLAY } from '../data/mockData';
+import { CATEGORY_INFO, EMERGENCY_HOTLINE, HOTLINE_DISPLAY, INITIAL_CASES } from '../data/mockData';
 import { formatReportedDateTime } from '../utils/dateUtils';
 import { CARITAS_KITUI_LOGO_BASE64 } from '../assets/caritasLogoBase64';
 import { DIRA_LOGO_BASE64 } from '../assets/diraLogoBase64';
+import {
+  generateIncidentTrendGraph,
+  generateCategoryBarGraph,
+  generateSingleCaseContextGraph,
+} from './pdfChartRenderer';
+import { getAllCasesFromDb } from './db';
 
 export type ReportPeriodType = 'weekly' | 'monthly' | 'quarterly' | 'annually' | 'all';
 
@@ -307,7 +313,7 @@ export function getPresetPeriodDates(periodType: ReportPeriodType, targetOffset 
  */
 export async function exportSingleCasePDF(
   caseItem: DonkeyCase, 
-  options?: { generatedBy?: string; autoDownload?: boolean }
+  options?: { generatedBy?: string; autoDownload?: boolean; allCases?: DonkeyCase[] }
 ): Promise<{ doc: jsPDF; filename: string; blob: Blob }> {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -602,6 +608,39 @@ export async function exportSingleCasePDF(
     });
 
     currentY = (doc as any).lastAutoTable.finalY + 6;
+  }
+
+  // --- REGIONAL INCIDENT TRENDS & RISK INTELLIGENCE GRAPH ---
+  try {
+    let contextCases: DonkeyCase[] = options?.allCases || [];
+    if (!contextCases || contextCases.length === 0) {
+      try {
+        contextCases = await getAllCasesFromDb();
+      } catch {}
+    }
+    if (!contextCases || contextCases.length === 0) {
+      contextCases = INITIAL_CASES;
+    }
+
+    const singleChartDataUrl = generateSingleCaseContextGraph(caseItem, contextCases);
+    if (singleChartDataUrl) {
+      const graphHeightMm = 62;
+      if (currentY + graphHeightMm + 12 > pageHeight - 20) {
+        doc.addPage();
+        currentY = 18;
+      }
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.setTextColor(maroon[0], maroon[1], maroon[2]);
+      doc.text('REGIONAL INCIDENT TRENDS & RISK INTELLIGENCE GRAPH', margin, currentY);
+      currentY += 4.5;
+
+      doc.addImage(singleChartDataUrl, 'PNG', margin, currentY, contentWidth, graphHeightMm);
+      currentY += graphHeightMm + 6;
+    }
+  } catch (err) {
+    console.warn('Failed to embed single case context chart:', err);
   }
 
   // --- ACTION AUDIT TRAIL LOGS ---
@@ -1129,12 +1168,68 @@ export async function exportGeneralReportPDF(
 
   currentY = (doc as any).lastAutoTable.finalY + 6;
 
-  // --- INCIDENT BREAKDOWN BY CATEGORY ---
+  // --- 1. INCIDENT FREQUENCY & CRIME TRENDS GRAPH ---
+  try {
+    const trendChartDataUrl = generateIncidentTrendGraph(filteredCases, {
+      title: `${config.periodLabel.toUpperCase()} INCIDENT FREQUENCY TRENDS`,
+      subtitle: `Weekly incident reports, welfare crime volume, and successful recovery interventions`,
+      periodType: config.periodType,
+      startDate: config.startDate,
+      endDate: config.endDate,
+    });
+
+    if (trendChartDataUrl) {
+      const trendGraphHeight = 68;
+      if (currentY + trendGraphHeight + 10 > pageHeight - 20) {
+        doc.addPage();
+        currentY = 18;
+      }
+
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.setTextColor(maroon[0], maroon[1], maroon[2]);
+      doc.text('1. INCIDENT FREQUENCY & CRIME TRENDS GRAPH', margin, currentY);
+      currentY += 4.5;
+
+      doc.addImage(trendChartDataUrl, 'PNG', margin, currentY, contentWidth, trendGraphHeight);
+      currentY += trendGraphHeight + 8;
+    }
+  } catch (err) {
+    console.warn('Failed to render incident trend graph:', err);
+  }
+
+  // --- 2. INCIDENT BREAKDOWN BY CATEGORY & COMPARATIVE GRAPH ---
+  if (currentY > pageHeight - 85) {
+    doc.addPage();
+    currentY = 18;
+  }
+
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9.5);
   doc.setTextColor(maroon[0], maroon[1], maroon[2]);
-  doc.text('1. INCIDENT BREAKDOWN BY CRIME / WELFARE CATEGORY', margin, currentY);
-  currentY += 4;
+  doc.text('2. INCIDENT BREAKDOWN BY CRIME / WELFARE CATEGORY', margin, currentY);
+  currentY += 4.5;
+
+  try {
+    const categoryChartDataUrl = generateCategoryBarGraph(filteredCases);
+    if (categoryChartDataUrl) {
+      const catGraphHeight = 56;
+      if (currentY + catGraphHeight + 10 > pageHeight - 20) {
+        doc.addPage();
+        currentY = 18;
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(9.5);
+        doc.setTextColor(maroon[0], maroon[1], maroon[2]);
+        doc.text('2. INCIDENT BREAKDOWN BY CRIME / WELFARE CATEGORY', margin, currentY);
+        currentY += 4.5;
+      }
+
+      doc.addImage(categoryChartDataUrl, 'PNG', margin, currentY, contentWidth, catGraphHeight);
+      currentY += catGraphHeight + 6;
+    }
+  } catch (err) {
+    console.warn('Failed to render category bar graph:', err);
+  }
 
   const categoryRows = Object.keys(categoryCounts).map((catKey) => {
     const cat = CATEGORY_INFO[catKey as CaseCategory] || { label: catKey, swahiliLabel: '' };
@@ -1177,7 +1272,7 @@ export async function exportGeneralReportPDF(
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(9.5);
     doc.setTextColor(maroon[0], maroon[1], maroon[2]);
-    doc.text('2. GEOGRAPHIC DISTRIBUTION ACROSS KITUI SUB-COUNTIES', margin, currentY);
+    doc.text('3. GEOGRAPHIC DISTRIBUTION ACROSS KITUI SUB-COUNTIES', margin, currentY);
     currentY += 4;
 
     const subCountyRows = subCounties.map((sc) => {
@@ -1220,7 +1315,7 @@ export async function exportGeneralReportPDF(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9.5);
   doc.setTextColor(maroon[0], maroon[1], maroon[2]);
-  doc.text(`3. CASE LEDGER CATALOG (${filteredCases.length} RECORDED INCIDENTS)`, margin, currentY);
+  doc.text(`4. CASE LEDGER CATALOG (${filteredCases.length} RECORDED INCIDENTS)`, margin, currentY);
   currentY += 4;
 
   const caseRows = filteredCases.map((c) => {
@@ -1267,7 +1362,7 @@ export async function exportGeneralReportPDF(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9.5);
   doc.setTextColor(maroon[0], maroon[1], maroon[2]);
-  doc.text('4. STRATEGIC TASKFORCE OBSERVATIONS & COMMUNITY DIRECTIVES', margin, currentY);
+  doc.text('5. STRATEGIC TASKFORCE OBSERVATIONS & COMMUNITY DIRECTIVES', margin, currentY);
   currentY += 4.5;
 
   doc.setFillColor(250, 250, 250);
@@ -1367,7 +1462,7 @@ export async function exportGeneralReportPDF(
       doc.setFontSize(9.5);
       doc.setTextColor(maroon[0], maroon[1], maroon[2]);
       doc.text(
-        `5. FIELD PHOTOGRAPHIC EVIDENCE & CASE VISUAL DOCUMENTATION (${resolvedGenPhotos.length} PHOTO${resolvedGenPhotos.length > 1 ? 'S' : ''})`,
+        `6. FIELD PHOTOGRAPHIC EVIDENCE & CASE VISUAL DOCUMENTATION (${resolvedGenPhotos.length} PHOTO${resolvedGenPhotos.length > 1 ? 'S' : ''})`,
         margin,
         currentY
       );

@@ -87,9 +87,28 @@
         "timestamp": { "type": "string", "description": "ISO timestamp of revocation" }
       },
       "required": ["id", "targetDeviceId", "timestamp"]
+    },
+    "VerificationCodeRecord": {
+      "title": "VerificationCodeRecord",
+      "description": "Email verification and password reset security codes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique record ID" },
+        "email": { "type": "string", "description": "Target user email address" },
+        "code": { "type": "string", "description": "6-digit verification security code" },
+        "purpose": { "type": "string", "description": "Purpose (signup_verification, password_reset)" },
+        "createdAt": { "type": "string", "description": "Creation timestamp" },
+        "expiresAt": { "type": "string", "description": "Expiration timestamp" },
+        "used": { "type": "boolean", "description": "Whether code has already been consumed" }
+      },
+      "required": ["id", "email", "code", "purpose", "createdAt", "expiresAt"]
     }
   },
   "firestore": {
+    "/dira_verification_codes/{codeId}": {
+      "schema": { "$ref": "#/entities/VerificationCodeRecord" },
+      "description": "Verification and password reset security tokens sent to user emails"
+    },
     "/dira_calls/{callId}": {
       "schema": { "$ref": "#/entities/ActiveCallSession" },
       "description": "Active voice and video calls for instant cross-device ringing and WebRTC negotiation"

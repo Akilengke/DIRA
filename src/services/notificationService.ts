@@ -378,15 +378,149 @@ export function createNotificationFromCase(
     isRead: false,
     reporterName: caseItem.reporter?.name || (caseItem.reporter?.isAnonymous ? 'Anonymous' : 'Community Reporter'),
     reportedByCurrentUser: isMine,
+    type: 'case_reported',
+    caseStatus: caseItem.status,
   };
+}
+
+// Format a DonkeyCase into a high-priority "Case Allocated for Action" InAppNotification
+export function createCaseAllocatedNotification(
+  caseItem: DonkeyCase,
+  currentUser: UserProfile | null
+): InAppNotification {
+  return {
+    id: `notif-alloc-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    caseId: caseItem.id,
+    trackingCode: caseItem.trackingCode,
+    category: caseItem.category,
+    urgency: caseItem.urgency,
+    title: `🚨 ACTION REQUIRED: Case #${caseItem.trackingCode} Allocated to You - ${caseItem.title}`,
+    village: caseItem.location?.village || 'Kitui Village',
+    subCounty: caseItem.location?.subCounty || 'Kitui Central',
+    donkeysCount: caseItem.donkeysCount || 1,
+    reportedAt: new Date().toISOString(),
+    isRead: false,
+    reporterName: caseItem.reporter?.name || (caseItem.reporter?.isAnonymous ? 'Anonymous' : 'Community Reporter'),
+    reportedByCurrentUser: false,
+    type: 'case_allocated',
+    allocatedToOfficerId: currentUser?.id,
+    allocatedToOfficerName: currentUser?.name,
+    caseStatus: caseItem.status,
+  };
+}
+
+// Format an Hourly Reminder InAppNotification
+export function createHourlyReminderNotification(
+  caseItem: DonkeyCase,
+  hourCount: number,
+  currentUser: UserProfile | null
+): InAppNotification {
+  return {
+    id: `notif-reminder-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    caseId: caseItem.id,
+    trackingCode: caseItem.trackingCode,
+    category: caseItem.category,
+    urgency: caseItem.urgency,
+    title: `⏰ HOURLY ACTION REMINDER #${hourCount}: Case #${caseItem.trackingCode} is still ${caseItem.status.replace('_', ' ')}`,
+    village: caseItem.location?.village || 'Kitui Village',
+    subCounty: caseItem.location?.subCounty || 'Kitui Central',
+    donkeysCount: caseItem.donkeysCount || 1,
+    reportedAt: new Date().toISOString(),
+    isRead: false,
+    reporterName: caseItem.reporter?.name || 'Community Reporter',
+    reportedByCurrentUser: false,
+    type: 'hourly_reminder',
+    reminderHourNumber: hourCount,
+    allocatedToOfficerId: currentUser?.id,
+    allocatedToOfficerName: currentUser?.name,
+    caseStatus: caseItem.status,
+  };
+}
+
+// Show native device notification for case allocated to Super User
+export function showSystemCaseAllocatedNotification(caseItem: DonkeyCase, officerName: string): void {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+
+  try {
+    const title = `🚨 CASE ALLOCATED FOR ACTION: #${caseItem.trackingCode}`;
+    const body = `${officerName}, you have been assigned to:\n${caseItem.title}\n📍 ${caseItem.location?.village || 'Kitui'}, ${caseItem.location?.subCounty || ''} • ${caseItem.donkeysCount || 1} Donkey(s)\nUrgency: ${caseItem.urgency?.toUpperCase() || 'HIGH'} • Status: ${caseItem.status.toUpperCase()}`;
+
+    const options: NotificationOptions = {
+      body,
+      icon: '/pwa-192x192.png',
+      badge: '/favicon.png',
+      tag: `dira-alloc-${caseItem.id}`,
+      vibrate: [500, 200, 500, 200, 800],
+      requireInteraction: true,
+    } as any;
+
+    new Notification(title, options);
+  } catch (err) {
+    console.warn('Failed to show case allocated system notification:', err);
+  }
+}
+
+// Show native device notification for hourly action reminder
+export function showSystemHourlyReminderNotification(caseItem: DonkeyCase, hourCount: number): void {
+  if (typeof window === 'undefined' || !('Notification' in window)) return;
+  if (Notification.permission !== 'granted') return;
+
+  try {
+    const title = `⏰ HOURLY ACTION REMINDER #${hourCount} - Case #${caseItem.trackingCode}`;
+    const body = `Case "${caseItem.title}" allocated to you is still ${caseItem.status.replace('_', ' ').toUpperCase()}.\n📍 ${caseItem.location?.village || 'Kitui'} • Action required until resolved.`;
+
+    const options: NotificationOptions = {
+      body,
+      icon: '/pwa-192x192.png',
+      badge: '/favicon.png',
+      tag: `dira-hourly-${caseItem.id}-${hourCount}`,
+      vibrate: [300, 150, 300, 150, 600],
+      requireInteraction: true,
+    } as any;
+
+    new Notification(title, options);
+  } catch (err) {
+    console.warn('Failed to show hourly reminder system notification:', err);
+  }
 }
 
 // Cross-tab broadcast listener setup
 export interface BroadcastCasePayload {
-  type: 'CASE_REPORTED';
+  type: 'CASE_REPORTED' | 'CASE_ALLOCATED';
   caseItem: DonkeyCase;
   reportedByUserId?: string;
+  targetOfficerId?: string;
   timestamp: number;
+}
+
+// Broadcast newly allocated case to all other open tabs/windows
+export function broadcastCaseAllocated(caseItem: DonkeyCase, targetOfficerId?: string): void {
+  const payload: BroadcastCasePayload = {
+    type: 'CASE_ALLOCATED',
+    caseItem,
+    targetOfficerId,
+    timestamp: Date.now(),
+  };
+
+  if (typeof BroadcastChannel !== 'undefined') {
+    try {
+      const channel = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
+      channel.postMessage(payload);
+      setTimeout(() => channel.close(), 1000);
+    } catch (err) {
+      console.warn('BroadcastChannel error:', err);
+    }
+  }
+
+  try {
+    localStorage.setItem(
+      STORAGE_SYNC_KEY,
+      JSON.stringify({ ...payload, _random: Math.random() })
+    );
+  } catch {
+    // Ignore storage quota errors
+  }
 }
 
 // Broadcast new case to all other open tabs/windows
@@ -420,19 +554,29 @@ export function broadcastCaseReported(caseItem: DonkeyCase, reportedByUserId?: s
   }
 }
 
-// Subscribe to cross-tab case notifications
+// Subscribe to cross-tab case notifications and allocations
 export function subscribeToCaseBroadcasts(
-  onCaseReported: (caseItem: DonkeyCase, reportedByUserId?: string) => void
+  onCaseReported: (caseItem: DonkeyCase, reportedByUserId?: string) => void,
+  onCaseAllocated?: (caseItem: DonkeyCase, targetOfficerId?: string) => void
 ): () => void {
   let channel: BroadcastChannel | null = null;
+
+  const handlePayload = (payload: BroadcastCasePayload) => {
+    if (!payload || !payload.caseItem) return;
+    if (payload.type === 'CASE_REPORTED') {
+      onCaseReported(payload.caseItem, payload.reportedByUserId);
+    } else if (payload.type === 'CASE_ALLOCATED' && onCaseAllocated) {
+      onCaseAllocated(payload.caseItem, payload.targetOfficerId);
+    }
+  };
 
   // 1. BroadcastChannel listener
   if (typeof BroadcastChannel !== 'undefined') {
     try {
       channel = new BroadcastChannel(BROADCAST_CHANNEL_NAME);
       channel.onmessage = (event: MessageEvent<BroadcastCasePayload>) => {
-        if (event.data && event.data.type === 'CASE_REPORTED' && event.data.caseItem) {
-          onCaseReported(event.data.caseItem, event.data.reportedByUserId);
+        if (event.data) {
+          handlePayload(event.data);
         }
       };
     } catch (err) {
@@ -445,9 +589,7 @@ export function subscribeToCaseBroadcasts(
     if (event.key === STORAGE_SYNC_KEY && event.newValue) {
       try {
         const data = JSON.parse(event.newValue) as BroadcastCasePayload;
-        if (data && data.type === 'CASE_REPORTED' && data.caseItem) {
-          onCaseReported(data.caseItem, data.reportedByUserId);
-        }
+        handlePayload(data);
       } catch {
         // Ignore JSON parse errors
       }

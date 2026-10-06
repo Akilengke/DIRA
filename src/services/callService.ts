@@ -8,6 +8,9 @@ const STUN_CONFIG: RTCConfiguration = {
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    { urls: 'stun:global.stun.twilio.com:3478' },
   ],
 };
 
@@ -73,22 +76,23 @@ export function showSystemCallNotification(call: ActiveCallSession): void {
 
 class CallAudioRinger {
   private ctx: AudioContext | null = null;
+  private ringGain: GainNode | null = null;
   private ringInterval: any = null;
   private vibrateInterval: any = null;
   private isPlaying = false;
+  private fallbackAudio: HTMLAudioElement | null = null;
 
   constructor() {
-    // Proactively unlock Web Audio API on first user interaction with the window
     if (typeof window !== 'undefined') {
       const unlockAudio = () => {
         if (this.ctx && this.ctx.state === 'suspended') {
           this.ctx.resume().catch(() => {});
         }
-        window.removeEventListener('click', unlockAudio);
-        window.removeEventListener('touchstart', unlockAudio);
       };
-      window.addEventListener('click', unlockAudio, { once: true });
-      window.addEventListener('touchstart', unlockAudio, { once: true });
+      window.addEventListener('click', unlockAudio);
+      window.addEventListener('touchstart', unlockAudio);
+      window.addEventListener('pointerdown', unlockAudio);
+      window.addEventListener('keydown', unlockAudio);
     }
   }
 
@@ -106,12 +110,24 @@ class CallAudioRinger {
     return this.ctx;
   }
 
-  // Play outgoing ringing tone (US/UK dual frequency tone 440Hz + 480Hz)
+  private ensureRingGain(ctx: AudioContext): GainNode {
+    if (!this.ringGain) {
+      this.ringGain = ctx.createGain();
+      this.ringGain.connect(ctx.destination);
+    }
+    this.ringGain.gain.cancelScheduledValues(0);
+    this.ringGain.gain.setValueAtTime(1.0, ctx.currentTime);
+    return this.ringGain;
+  }
+
+  // Play outgoing ringing tone (dual frequency 440Hz + 480Hz) - rings continuously until answered
   playOutgoingRing() {
     this.stop();
+    this.isPlaying = true;
+
     const ctx = this.getContext();
     if (!ctx) return;
-    this.isPlaying = true;
+    const ringMaster = this.ensureRingGain(ctx);
 
     const playBurst = () => {
       if (!this.isPlaying) return;
@@ -128,33 +144,33 @@ class CallAudioRinger {
         osc2.frequency.value = 480;
 
         gain.gain.setValueAtTime(0.001, now);
-        gain.gain.exponentialRampToValueAtTime(0.12, now + 0.05);
-        gain.gain.setValueAtTime(0.12, now + 1.6);
+        gain.gain.exponentialRampToValueAtTime(0.2, now + 0.05);
+        gain.gain.setValueAtTime(0.2, now + 1.6);
         gain.gain.exponentialRampToValueAtTime(0.001, now + 1.8);
 
         osc1.connect(gain);
         osc2.connect(gain);
-        gain.connect(ctx.destination);
+        gain.connect(ringMaster);
 
         osc1.start(now);
         osc2.start(now);
-        osc1.stop(now + 1.8);
-        osc2.stop(now + 1.8);
+        osc1.stop(now + 1.85);
+        osc2.stop(now + 1.85);
       } catch (e) {
-        console.warn('Outgoing ringtone error:', e);
+        console.warn('Outgoing ringtone burst note:', e);
       }
     };
 
     playBurst();
-    this.ringInterval = setInterval(playBurst, 3500);
+    this.ringInterval = setInterval(playBurst, 3200);
   }
 
-  // Play melodic incoming call chime with phone vibration
+  // Play melodic incoming call chime with phone vibration - rings continuously until answered
   playIncomingRing() {
     this.stop();
     this.isPlaying = true;
 
-    // Trigger physical phone vibration on mobile devices (repeats while ringing)
+    // Trigger physical phone vibration on mobile devices (repeats continuously while ringing)
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       try {
         navigator.vibrate([400, 200, 400, 200, 600, 300, 600]);
@@ -170,6 +186,7 @@ class CallAudioRinger {
 
     const ctx = this.getContext();
     if (!ctx) return;
+    const ringMaster = this.ensureRingGain(ctx);
 
     const playMelody = () => {
       if (!this.isPlaying) return;
@@ -198,12 +215,12 @@ class CallAudioRinger {
           osc2.frequency.value = f2;
 
           gain.gain.setValueAtTime(0.001, startTime);
-          gain.gain.linearRampToValueAtTime(0.25, startTime + 0.03);
+          gain.gain.linearRampToValueAtTime(0.35, startTime + 0.03);
           gain.gain.exponentialRampToValueAtTime(0.001, startTime + d);
 
           osc1.connect(gain);
           osc2.connect(gain);
-          gain.connect(ctx.destination);
+          gain.connect(ringMaster);
 
           osc1.start(startTime);
           osc2.start(startTime);
@@ -247,6 +264,10 @@ class CallAudioRinger {
     } catch {}
   }
 
+  isRinging(): boolean {
+    return this.isPlaying;
+  }
+
   stop() {
     this.isPlaying = false;
     if (this.ringInterval) {
@@ -260,6 +281,13 @@ class CallAudioRinger {
     if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
       try {
         navigator.vibrate(0);
+      } catch {}
+    }
+    // Hard instant zero-latency mute on any in-flight Web Audio ringing tones
+    if (this.ctx && this.ringGain) {
+      try {
+        this.ringGain.gain.cancelScheduledValues(0);
+        this.ringGain.gain.setValueAtTime(0, this.ctx.currentTime);
       } catch {}
     }
   }
@@ -283,6 +311,9 @@ class CallService {
   private currentUserRole: string = '';
   private broadcastChannel: BroadcastChannel | null = null;
   private facingMode: 'user' | 'environment' = 'user';
+  private screenStream: MediaStream | null = null;
+  private isScreenSharing = false;
+  private savedCameraTrack: MediaStreamTrack | null = null;
   private eventSource: EventSource | null = null;
   private sseRetryTimeout: any = null;
   private callPingInterval: any = null;
@@ -293,10 +324,28 @@ class CallService {
   private onCallStateListeners: Set<(call: ActiveCallSession | null) => void> = new Set();
   private onIncomingCallListeners: Set<(call: ActiveCallSession | null) => void> = new Set();
   private onRemoteStreamsUpdatedListeners: Set<(streams: Map<string, MediaStream>) => void> = new Set();
+  private onLocalStreamUpdatedListeners: Set<(stream: MediaStream | null) => void> = new Set();
   private onActiveCallsListListeners: Set<(calls: ActiveCallSession[]) => void> = new Set();
+  private onCallEndedListeners: Set<(data: { callId: string; reason?: string; duration?: string; title?: string }) => void> = new Set();
 
   constructor() {
     if (typeof window !== 'undefined') {
+      try {
+        const storedUser = localStorage.getItem('kaa_rada_current_user_v2') || localStorage.getItem('dira_current_user');
+        if (storedUser) {
+          const parsed = JSON.parse(storedUser);
+          if (parsed?.id) this.currentUserId = parsed.id;
+          if (parsed?.name) this.currentUserName = parsed.name;
+          if (parsed?.phone) this.currentUserPhone = parsed.phone;
+          if (parsed?.role) this.currentUserRole = parsed.role;
+        }
+      } catch {}
+
+      if (!this.currentUserId) {
+        this.currentUserId = getGuestSenderId();
+        this.currentUserName = localStorage.getItem('dira_guest_name') || 'Community Member';
+      }
+
       try {
         this.broadcastChannel = new BroadcastChannel(CALL_BROADCAST_CHANNEL);
         this.broadcastChannel.onmessage = (event) => {
@@ -338,6 +387,7 @@ class CallService {
             if (call.status === 'calling' || call.status === 'ringing') {
               this.handleCallInvite(call);
             } else if (call.status === 'connected') {
+              callRinger.stop();
               this.handleCallUpdated(call);
             } else if (call.status === 'ended' || call.status === 'rejected') {
               this.handleCallEnded(call.callId, call.status);
@@ -369,17 +419,36 @@ class CallService {
         calls.forEach((call) => {
           if (call.status === 'calling' || call.status === 'ringing') {
             this.handleCallInvite(call);
+          } else if (call.status === 'connected' && this.activeCall && this.activeCall.callId === call.callId) {
+            callRinger.stop();
+            this.handleCallUpdated(call);
           }
         });
 
-        // If we are currently ringing for a call that has now ended on the server, stop ringing
+        // If incoming call was answered elsewhere or ended, stop ringing immediately
         if (this.incomingCall) {
-          const stillActive = calls.some(
-            (c) => c.callId === this.incomingCall?.callId && (c.status === 'calling' || c.status === 'ringing')
-          );
-          if (!stillActive && calls.length > 0) {
+          const matchingCall = calls.find((c) => c.callId === this.incomingCall?.callId);
+          if (matchingCall && (matchingCall.status === 'ended' || matchingCall.status === 'rejected')) {
+            callRinger.stop();
+            this.notifyIncomingCall(null);
+          } else if (matchingCall && !matchingCall.isGroup && matchingCall.status === 'connected') {
+            callRinger.stop();
+            this.notifyIncomingCall(null);
+          } else if (!matchingCall && calls.length > 0) {
             this.notifyIncomingCall(null);
             callRinger.stop();
+          }
+        }
+
+        // If our outgoing active call has connected or has remote participants, ensure ringing stops
+        if (this.activeCall) {
+          const matchingActive = calls.find((c) => c.callId === this.activeCall?.callId);
+          if (matchingActive) {
+            const hasJoinedRemote = matchingActive.participants && matchingActive.participants.some(p => p.id !== this.currentUserId);
+            if (matchingActive.status === 'connected' || hasJoinedRemote) {
+              callRinger.stop();
+              this.handleCallUpdated(matchingActive);
+            }
           }
         }
       }
@@ -472,7 +541,7 @@ class CallService {
           } else if (data.type === 'CALL_UPDATED' && data.call) {
             this.handleCallUpdated(data.call);
           } else if (data.type === 'CALL_ENDED' && data.callId) {
-            this.handleCallEnded(data.callId, data.reason);
+            this.handleCallEnded(data.callId, data.reason, data.duration);
           } else if (data.type === 'CALL_SIGNAL' && data.signal) {
             this.handleIncomingSignal(data.signal);
           }
@@ -545,6 +614,10 @@ class CallService {
     return () => this.onCallStateListeners.delete(cb);
   }
 
+  onCallStateChanged(cb: (call: ActiveCallSession | null) => void): () => void {
+    return this.onCallState(cb);
+  }
+
   // Subscribe to incoming call rings
   onIncomingCall(cb: (call: ActiveCallSession | null) => void): () => void {
     this.onIncomingCallListeners.add(cb);
@@ -565,6 +638,17 @@ class CallService {
     return () => this.onRemoteStreamsUpdatedListeners.delete(cb);
   }
 
+  // Subscribe to local media stream update
+  onLocalStreamUpdated(cb: (stream: MediaStream | null) => void): () => void {
+    this.onLocalStreamUpdatedListeners.add(cb);
+    cb(this.localStream);
+    return () => this.onLocalStreamUpdatedListeners.delete(cb);
+  }
+
+  private notifyLocalStream() {
+    this.onLocalStreamUpdatedListeners.forEach(cb => cb(this.localStream));
+  }
+
   // Subscribe to active channel calls
   onActiveCallsList(cb: (calls: ActiveCallSession[]) => void): () => void {
     this.onActiveCallsListListeners.add(cb);
@@ -572,15 +656,39 @@ class CallService {
     return () => this.onActiveCallsListListeners.delete(cb);
   }
 
+  // Subscribe to call ended events across the app
+  onCallEnded(cb: (data: { callId: string; reason?: string; duration?: string; title?: string }) => void): () => void {
+    this.onCallEndedListeners.add(cb);
+    return () => this.onCallEndedListeners.delete(cb);
+  }
+
   private notifyActiveCallsList(calls: ActiveCallSession[]) {
     this.onActiveCallsListListeners.forEach(cb => cb(calls));
   }
 
   private notifyCallState() {
-    this.onCallStateListeners.forEach(cb => cb(this.activeCall));
+    const snapshot = this.activeCall ? {
+      ...this.activeCall,
+      participants: this.activeCall.participants.map(p => ({ ...p })),
+    } : null;
+    this.onCallStateListeners.forEach(cb => cb(snapshot));
+  }
+
+  public stopRinging() {
+    callRinger.stop();
   }
 
   private notifyRemoteStreams() {
+    if (this.remoteStreams.size > 0) {
+      callRinger.stop();
+      if (this.activeCall && this.activeCall.status !== 'connected') {
+        this.activeCall.status = 'connected';
+        if (!this.activeCall.connectedAt) {
+          this.activeCall.connectedAt = new Date().toISOString();
+        }
+        this.notifyCallState();
+      }
+    }
     const copy = new Map(this.remoteStreams);
     this.onRemoteStreamsUpdatedListeners.forEach(cb => cb(copy));
   }
@@ -590,7 +698,15 @@ class CallService {
   // ---------------------------------------------------------------------------
   async acquireMediaStream(callType: CallType): Promise<MediaStream> {
     if (this.localStream) {
-      return this.localStream;
+      const hasAudio = this.localStream.getAudioTracks().some(t => t.readyState === 'live');
+      const hasVideo = this.localStream.getVideoTracks().some(t => t.readyState === 'live');
+
+      if (hasAudio && (callType === 'audio' || hasVideo)) {
+        return this.localStream;
+      }
+      // If missing video when requested or tracks stopped, cleanly release old tracks
+      this.localStream.getTracks().forEach(t => t.stop());
+      this.localStream = null;
     }
 
     try {
@@ -603,8 +719,6 @@ class CallService {
         video: callType === 'video'
           ? {
               facingMode: this.facingMode,
-              width: { ideal: 640 },
-              height: { ideal: 480 },
             }
           : false,
       };
@@ -613,18 +727,26 @@ class CallService {
       this.localStream = stream;
       return stream;
     } catch (err: any) {
-      console.warn('Camera/mic access error, trying audio fallback:', err);
-      // If video failed, attempt audio-only fallback
+      console.warn('[CallService] Camera/mic access error, trying resilient fallback:', err);
+      // Fallback 1: basic audio & video without constraints
       if (callType === 'video') {
         try {
-          const audioOnly = await navigator.mediaDevices.getUserMedia({ audio: true });
-          this.localStream = audioOnly;
-          return audioOnly;
-        } catch (audioErr) {
-          console.warn('Audio access error:', audioErr);
-        }
+          const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+          this.localStream = stream;
+          return stream;
+        } catch {}
       }
-      // Create a dummy silent media stream as absolute resilience fallback
+
+      // Fallback 2: audio only
+      try {
+        const audioOnly = await navigator.mediaDevices.getUserMedia({ audio: true });
+        this.localStream = audioOnly;
+        return audioOnly;
+      } catch (audioErr) {
+        console.warn('[CallService] Audio access fallback error:', audioErr);
+      }
+
+      // Fallback 3: resilient dummy silent media stream
       const dummyStream = this.createSilentStream();
       this.localStream = dummyStream;
       return dummyStream;
@@ -675,8 +797,10 @@ class CallService {
 
   // Toggle Video Camera On / Off
   async toggleVideo(): Promise<boolean> {
-    if (!this.localStream) return false;
-    let videoTrack = this.localStream.getVideoTracks()[0];
+    if (!this.localStream) {
+      this.localStream = await this.acquireMediaStream('video');
+    }
+    let videoTrack = this.localStream.getVideoTracks().find(t => t.readyState === 'live');
 
     if (videoTrack) {
       videoTrack.enabled = !videoTrack.enabled;
@@ -684,6 +808,9 @@ class CallService {
       if (this.activeCall) {
         const me = this.activeCall.participants.find(p => p.id === this.currentUserId);
         if (me) me.isVideoOff = isVideoOff;
+        if (!isVideoOff) {
+          this.activeCall.callType = 'video';
+        }
         this.notifyCallState();
         this.sendSignal({
           type: 'CALL_PARTICIPANT_UPDATE',
@@ -695,25 +822,62 @@ class CallService {
           timestamp: new Date().toISOString(),
         });
       }
+      this.notifyLocalStream();
       return videoTrack.enabled;
     } else {
       // Add video track if not present
       try {
         const videoStream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: this.facingMode, width: { ideal: 640 }, height: { ideal: 480 } },
+          video: { facingMode: this.facingMode },
         });
         const newTrack = videoStream.getVideoTracks()[0];
         if (newTrack) {
           this.localStream.addTrack(newTrack);
-          // Add to all peer connections
-          this.peerConnections.forEach((pc) => {
-            pc.addTrack(newTrack, this.localStream!);
-          });
+          this.notifyLocalStream();
+
           if (this.activeCall) {
+            this.activeCall.callType = 'video';
             const me = this.activeCall.participants.find(p => p.id === this.currentUserId);
             if (me) me.isVideoOff = false;
             this.notifyCallState();
           }
+
+          // Add or replace track in all peer connections and trigger WebRTC renegotiation
+          for (const [peerId, pc] of this.peerConnections.entries()) {
+            const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+            if (sender) {
+              await sender.replaceTrack(newTrack);
+            } else {
+              pc.addTrack(newTrack, this.localStream!);
+              try {
+                const offer = await pc.createOffer();
+                await pc.setLocalDescription(offer);
+                this.sendSignal({
+                  type: 'CALL_OFFER',
+                  callId: this.activeCall?.callId || '',
+                  callType: 'video',
+                  isGroup: Boolean(this.activeCall?.isGroup),
+                  caller: { id: this.currentUserId, name: this.currentUserName || 'User' },
+                  targetUserId: peerId,
+                  sdp: offer,
+                  timestamp: new Date().toISOString(),
+                });
+              } catch (renegErr) {
+                console.warn('Renegotiation error on video add:', renegErr);
+              }
+            }
+          }
+
+          this.sendSignal({
+            type: 'CALL_PARTICIPANT_UPDATE',
+            callId: this.activeCall?.callId || '',
+            callType: 'video',
+            isGroup: Boolean(this.activeCall?.isGroup),
+            caller: this.activeCall?.initiator || { id: this.currentUserId, name: 'User' },
+            participant: { id: this.currentUserId, name: this.currentUserName || 'User', isVideoOff: false },
+            timestamp: new Date().toISOString(),
+          });
+
           return true;
         }
       } catch (e) {
@@ -736,7 +900,7 @@ class CallService {
 
     try {
       const newStream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: this.facingMode, width: { ideal: 640 }, height: { ideal: 480 } },
+        video: { facingMode: this.facingMode },
       });
       const newVideo = newStream.getVideoTracks()[0];
       if (newVideo) {
@@ -758,26 +922,257 @@ class CallService {
   }
 
   // ---------------------------------------------------------------------------
+  // SCREEN SHARING CONTROLS
+  // ---------------------------------------------------------------------------
+  getIsScreenSharing(): boolean {
+    return this.isScreenSharing;
+  }
+
+  getScreenStream(): MediaStream | null {
+    return this.screenStream;
+  }
+
+  async startScreenShare(): Promise<boolean> {
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+      console.warn('[CallService] Screen sharing is not supported in this browser environment.');
+      return false;
+    }
+
+    try {
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          cursor: 'always',
+        } as any,
+        audio: false,
+      });
+
+      const screenTrack = displayStream.getVideoTracks()[0];
+      if (!screenTrack) return false;
+
+      // Save active camera track so we can seamlessly restore it when screen share stops
+      if (this.localStream) {
+        const activeCamera = this.localStream.getVideoTracks().find(t => t.readyState === 'live');
+        if (activeCamera) {
+          this.savedCameraTrack = activeCamera;
+          this.localStream.removeTrack(activeCamera);
+        }
+        this.localStream.addTrack(screenTrack);
+      } else {
+        this.localStream = new MediaStream([screenTrack]);
+      }
+
+      this.notifyLocalStream();
+      this.screenStream = displayStream;
+      this.isScreenSharing = true;
+
+      // Replace video track on all peer connections
+      for (const [peerId, pc] of this.peerConnections.entries()) {
+        const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+        if (sender) {
+          await sender.replaceTrack(screenTrack);
+        } else {
+          pc.addTrack(screenTrack, this.localStream!);
+          try {
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            this.sendSignal({
+              type: 'CALL_OFFER',
+              callId: this.activeCall?.callId || '',
+              callType: 'video',
+              isGroup: Boolean(this.activeCall?.isGroup),
+              caller: { id: this.currentUserId, name: this.currentUserName || 'User' },
+              targetUserId: peerId,
+              sdp: offer,
+              timestamp: new Date().toISOString(),
+            });
+          } catch (e) {
+            console.warn('[CallService] Renegotiation error on screen share start:', e);
+          }
+        }
+      }
+
+      // Automatically handle when user clicks native "Stop sharing" chrome banner
+      screenTrack.onended = () => {
+        this.stopScreenShare();
+      };
+
+      if (this.activeCall) {
+        this.activeCall.callType = 'video';
+        const me = this.activeCall.participants.find(p => p.id === this.currentUserId);
+        if (me) {
+          me.isScreenSharing = true;
+          me.isVideoOff = false;
+        }
+        this.notifyCallState();
+        this.sendSignal({
+          type: 'CALL_PARTICIPANT_UPDATE',
+          callId: this.activeCall.callId,
+          callType: 'video',
+          isGroup: this.activeCall.isGroup,
+          caller: this.activeCall.initiator,
+          participant: { ...me, id: this.currentUserId, name: me?.name || 'User', isScreenSharing: true, isVideoOff: false },
+          timestamp: new Date().toISOString(),
+        });
+      }
+
+      return true;
+    } catch (err: any) {
+      if (err.name !== 'NotAllowedError') {
+        console.warn('[CallService] Screen share error:', err);
+      }
+      return false;
+    }
+  }
+
+  async stopScreenShare(): Promise<void> {
+    if (!this.isScreenSharing) return;
+
+    if (this.screenStream) {
+      this.screenStream.getTracks().forEach(t => t.stop());
+      this.screenStream = null;
+    }
+
+    this.isScreenSharing = false;
+
+    // Restore camera track if previously active
+    const restoredTrack = this.savedCameraTrack && this.savedCameraTrack.readyState === 'live'
+      ? this.savedCameraTrack
+      : null;
+
+    if (this.localStream) {
+      // Remove any stopped screen tracks
+      this.localStream.getVideoTracks().forEach(t => {
+        if (t !== restoredTrack) {
+          this.localStream!.removeTrack(t);
+        }
+      });
+
+      if (restoredTrack && !this.localStream.getVideoTracks().includes(restoredTrack)) {
+        this.localStream.addTrack(restoredTrack);
+      }
+    }
+
+    // Replace track back on peer connections
+    for (const [peerId, pc] of this.peerConnections.entries()) {
+      const sender = pc.getSenders().find(s => s.track && s.track.kind === 'video');
+      if (sender) {
+        await sender.replaceTrack(restoredTrack);
+      }
+    }
+
+    this.savedCameraTrack = null;
+    this.notifyLocalStream();
+
+    if (this.activeCall) {
+      const me = this.activeCall.participants.find(p => p.id === this.currentUserId);
+      if (me) {
+        me.isScreenSharing = false;
+        me.isVideoOff = !restoredTrack || !restoredTrack.enabled;
+      }
+      this.notifyCallState();
+      this.sendSignal({
+        type: 'CALL_PARTICIPANT_UPDATE',
+        callId: this.activeCall.callId,
+        callType: this.activeCall.callType,
+        isGroup: this.activeCall.isGroup,
+        caller: this.activeCall.initiator,
+        participant: { ...me, id: this.currentUserId, name: me?.name || 'User', isScreenSharing: false, isVideoOff: !restoredTrack || !restoredTrack.enabled },
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+
+  async toggleScreenShare(): Promise<boolean> {
+    if (this.isScreenSharing) {
+      await this.stopScreenShare();
+      return false;
+    } else {
+      return await this.startScreenShare();
+    }
+  }
+
+  // Helper to ensure local audio and video (or screen share) tracks are attached to all senders
+  private attachLocalTracksToPeer(pc: RTCPeerConnection) {
+    const audioTrack = this.localStream?.getAudioTracks().find(t => t.readyState === 'live');
+    const screenTrack = this.isScreenSharing && this.screenStream ? this.screenStream.getVideoTracks().find(t => t.readyState === 'live') : null;
+    const cameraTrack = this.localStream?.getVideoTracks().find(t => t.readyState === 'live');
+    const activeVideoTrack = screenTrack || cameraTrack || null;
+
+    const senders = pc.getSenders();
+
+    // 1. Audio sender
+    const audioSender = senders.find(s => s.track?.kind === 'audio' || (s as any).kind === 'audio');
+    if (audioSender) {
+      if (audioTrack && audioSender.track !== audioTrack) {
+        audioSender.replaceTrack(audioTrack).catch(() => {});
+      }
+    } else if (audioTrack) {
+      try {
+        pc.addTrack(audioTrack, this.localStream!);
+      } catch {}
+    }
+
+    // 2. Video sender (camera or screen share)
+    const videoSender = senders.find(s => s.track?.kind === 'video' || (s as any).kind === 'video' || ((s as any).transport && (!s.track || s.track.kind === 'video')));
+    if (videoSender) {
+      if (videoSender.track !== activeVideoTrack) {
+        videoSender.replaceTrack(activeVideoTrack).catch(() => {});
+      }
+    } else if (activeVideoTrack) {
+      try {
+        pc.addTrack(activeVideoTrack, this.localStream!);
+      } catch {}
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // WEBRTC PEER CONNECTION HELPERS
   // ---------------------------------------------------------------------------
   private getOrCreatePeerConnection(peerId: string): RTCPeerConnection {
     let pc = this.peerConnections.get(peerId);
-    if (pc) return pc;
+    if (pc) {
+      this.attachLocalTracksToPeer(pc);
+      return pc;
+    }
 
     pc = new RTCPeerConnection(STUN_CONFIG);
 
-    // Add local tracks to connection
-    if (this.localStream) {
-      this.localStream.getTracks().forEach((track) => {
-        pc!.addTrack(track, this.localStream!);
-      });
+    // Pre-allocate transceivers for bidirectional audio & video to reserve SDP m-lines
+    try {
+      pc.addTransceiver('audio', { direction: 'sendrecv' });
+      pc.addTransceiver('video', { direction: 'sendrecv' });
+    } catch (e) {
+      console.warn('[CallService] addTransceiver note:', e);
     }
 
-    // Handle remote tracks
+    // Attach active local audio & video/screen tracks
+    this.attachLocalTracksToPeer(pc);
+
+    // Handle remote tracks (audio & video combined)
     pc.ontrack = (event) => {
-      const remoteStream = event.streams[0] || new MediaStream([event.track]);
-      this.remoteStreams.set(peerId, remoteStream);
+      let remoteStream = this.remoteStreams.get(peerId);
+      if (!remoteStream) {
+        remoteStream = new MediaStream();
+      }
+      // Replace existing track of same kind so new track takes effect
+      const existingTracks = remoteStream.getTracks().filter(t => t.kind === event.track.kind);
+      existingTracks.forEach(t => remoteStream!.removeTrack(t));
+      remoteStream.addTrack(event.track);
+
+      // Create a fresh MediaStream instance with tracks so React components detect change
+      const freshStreamInstance = new MediaStream(remoteStream.getTracks());
+      this.remoteStreams.set(peerId, freshStreamInstance);
       this.notifyRemoteStreams();
+
+      event.track.onended = () => {
+        this.notifyRemoteStreams();
+      };
+      event.track.onmute = () => {
+        this.notifyRemoteStreams();
+      };
+      event.track.onunmute = () => {
+        this.notifyRemoteStreams();
+      };
     };
 
     // Handle ICE candidates
@@ -789,11 +1184,24 @@ class CallService {
           channelId: this.activeCall.channelId,
           callType: this.activeCall.callType,
           isGroup: this.activeCall.isGroup,
-          caller: this.activeCall.initiator,
+          caller: {
+            id: this.currentUserId,
+            name: this.currentUserName || 'User',
+            role: this.currentUserRole as UserRole,
+            phone: this.currentUserPhone,
+          },
           targetUserId: peerId,
           candidate: event.candidate,
           timestamp: new Date().toISOString(),
         });
+      }
+    };
+
+    pc.oniceconnectionstatechange = () => {
+      if (pc?.iceConnectionState === 'failed') {
+        try {
+          (pc as any).restartIce?.();
+        } catch {}
       }
     };
 
@@ -829,6 +1237,21 @@ class CallService {
   }): Promise<ActiveCallSession> {
     this.currentUserId = params.initiator.id;
 
+    // Check if initiating a group call and one is ALREADY ongoing in this channel
+    if (params.isGroup && params.channelId) {
+      try {
+        const activeList = await this.fetchActiveCalls(params.channelId);
+        const existing = activeList.find(c => c.isGroup && c.channelId === params.channelId && c.status !== 'ended' && c.status !== 'rejected');
+        if (existing) {
+          console.log(`[CallService] Group call already ongoing in #${params.channelName || params.channelId}. Joining ongoing call instead.`);
+          await this.joinGroupCall(existing);
+          return existing;
+        }
+      } catch (checkErr) {
+        console.warn('[CallService] Group call pre-check note:', checkErr);
+      }
+    }
+
     // Capture user media
     await this.acquireMediaStream(params.callType);
 
@@ -858,18 +1281,16 @@ class CallService {
         isMuted: false,
         isVideoOff: params.callType === 'audio',
       }],
-      status: params.isGroup ? 'connected' : 'calling',
+      status: 'calling',
       startedAt: now,
-      connectedAt: params.isGroup ? now : undefined,
+      connectedAt: undefined,
     };
 
     this.activeCall = session;
     this.notifyCallState();
 
-    // Play outgoing ring for direct call
-    if (!params.isGroup) {
-      callRinger.playOutgoingRing();
-    }
+    // Play outgoing ring continuously for all calls (both direct and group) until someone answers!
+    callRinger.playOutgoingRing();
 
     // Ping server regularly while call is alive
     if (this.callPingInterval) clearInterval(this.callPingInterval);
@@ -898,11 +1319,20 @@ class CallService {
 
     // Inform server of new call
     try {
-      await fetch('/api/calls/initiate', {
+      const resp = await fetch('/api/calls/initiate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(session),
       });
+
+      if (resp.status === 409) {
+        const conflictData = await resp.json().catch(() => ({}));
+        if (conflictData.call) {
+          console.log('[CallService] Server returned 409 GROUP_CALL_ALREADY_ACTIVE. Joining existing active call.');
+          await this.joinGroupCall(conflictData.call);
+          return conflictData.call;
+        }
+      }
     } catch (err) {
       console.warn('Call initiate server notify failed:', err);
     }
@@ -999,7 +1429,12 @@ class CallService {
       channelId: call.channelId,
       callType: type,
       isGroup: call.isGroup,
-      caller: call.initiator,
+      caller: {
+        id: this.currentUserId,
+        name: this.currentUserName || 'User',
+        role: this.currentUserRole as UserRole,
+        phone: this.currentUserPhone,
+      },
       targetUserId: call.initiator.id,
       participant: meParticipant,
       timestamp: new Date().toISOString(),
@@ -1056,6 +1491,20 @@ class CallService {
     if (!this.activeCall) return;
     const callId = this.activeCall.callId;
 
+    let durStr = '00:00';
+    if (this.activeCall.connectedAt) {
+      const diff = Math.floor((Date.now() - new Date(this.activeCall.connectedAt).getTime()) / 1000);
+      const mins = Math.floor(diff / 60);
+      const secs = diff % 60;
+      durStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+
+    this.activeCall.status = 'ended';
+    this.activeCall.endedAt = new Date().toISOString();
+    this.activeCall.endedReason = 'You ended the call';
+    this.activeCall.endedDuration = durStr;
+    this.notifyCallState();
+
     // Update in Cloud Firestore
     try {
       const db = getFirestoreClient();
@@ -1087,7 +1536,28 @@ class CallService {
       timestamp: new Date().toISOString(),
     });
 
-    this.cleanupCallState();
+    if (this.screenStream) {
+      this.screenStream.getTracks().forEach(track => track.stop());
+      this.screenStream = null;
+    }
+    this.isScreenSharing = false;
+    this.savedCameraTrack = null;
+
+    if (this.localStream) {
+      this.localStream.getTracks().forEach(track => track.stop());
+      this.localStream = null;
+    }
+
+    this.peerConnections.forEach(pc => pc.close());
+    this.peerConnections.clear();
+    this.remoteStreams.clear();
+    this.notifyRemoteStreams();
+
+    setTimeout(() => {
+      if (this.activeCall && this.activeCall.callId === callId) {
+        this.cleanupCallState();
+      }
+    }, 3500);
   }
 
   // Join an ongoing group call
@@ -1145,33 +1615,69 @@ class CallService {
       channelId: call.channelId,
       callType: call.callType,
       isGroup: true,
-      caller: call.initiator,
+      caller: {
+        id: this.currentUserId,
+        name: this.currentUserName || 'User',
+        role: this.currentUserRole as UserRole,
+        phone: this.currentUserPhone,
+      },
       participant: meParticipant,
       timestamp: new Date().toISOString(),
     });
 
-    // Create offers for existing participants
-    call.participants.forEach(async (participant) => {
-      if (participant.id !== this.currentUserId) {
-        const pc = this.getOrCreatePeerConnection(participant.id);
-        try {
-          const offer = await pc.createOffer();
-          await pc.setLocalDescription(offer);
-          this.sendSignal({
-            type: 'CALL_OFFER',
-            callId: call.callId,
-            callType: call.callType,
-            isGroup: true,
-            caller: { id: this.currentUserId, name: meParticipant.name },
-            targetUserId: participant.id,
-            sdp: offer,
-            timestamp: new Date().toISOString(),
-          });
-        } catch (e) {
-          console.warn('Mesh offer error:', e);
+    // Existing participants will send offers upon receiving CALL_JOIN.
+    // Fallback: If any peer connection remains uninitiated after 2000ms, send a targeted offer
+    setTimeout(() => {
+      if (!this.activeCall || this.activeCall.callId !== call.callId) return;
+      call.participants.forEach(async (participant) => {
+        if (participant.id !== this.currentUserId) {
+          const pc = this.peerConnections.get(participant.id);
+          if (!pc || (pc.signalingState === 'stable' && pc.connectionState !== 'connected')) {
+            const conn = this.getOrCreatePeerConnection(participant.id);
+            if (conn.signalingState === 'stable') {
+              try {
+                const offer = await conn.createOffer();
+                await conn.setLocalDescription(offer);
+                this.sendSignal({
+                  type: 'CALL_OFFER',
+                  callId: call.callId,
+                  callType: call.callType,
+                  isGroup: true,
+                  caller: { id: this.currentUserId, name: meParticipant.name },
+                  targetUserId: participant.id,
+                  sdp: offer,
+                  timestamp: new Date().toISOString(),
+                });
+              } catch (e) {
+                console.warn('Mesh fallback offer error:', e);
+              }
+            }
+          }
+        }
+      });
+    }, 2000);
+  }
+
+  // Join or answer a call by its callId (used when waking up app from push notification)
+  async joinOrAnswerCallById(callId: string): Promise<boolean> {
+    try {
+      const res = await fetch('/api/calls/active');
+      if (res.ok) {
+        const data = await res.json();
+        const call = (data.calls || []).find((c: ActiveCallSession) => c.callId === callId);
+        if (call && call.status !== 'ended' && call.status !== 'rejected') {
+          if (call.isGroup) {
+            await this.joinGroupCall(call);
+          } else {
+            await this.answerCall(call);
+          }
+          return true;
         }
       }
-    });
+    } catch (e) {
+      console.warn('[CallService] joinOrAnswerCallById error:', e);
+    }
+    return false;
   }
 
   private cleanupCallState() {
@@ -1179,6 +1685,14 @@ class CallService {
       clearInterval(this.callPingInterval);
       this.callPingInterval = null;
     }
+
+    // Stop screen sharing if active
+    if (this.screenStream) {
+      this.screenStream.getTracks().forEach(track => track.stop());
+      this.screenStream = null;
+    }
+    this.isScreenSharing = false;
+    this.savedCameraTrack = null;
 
     // Stop local tracks
     if (this.localStream) {
@@ -1262,6 +1776,27 @@ class CallService {
   }
 
   private handleCallUpdated(call: ActiveCallSession) {
+    if (!call || !call.callId) return;
+
+    // Outgoing call: stop ringing when remote participant joins or connects
+    if (this.activeCall && this.activeCall.callId === call.callId) {
+      const hasRemoteParticipant = call.participants && call.participants.some(p => p.id !== this.currentUserId);
+      if (call.status === 'connected' || hasRemoteParticipant) {
+        callRinger.stop();
+      }
+    }
+
+    // Incoming call: stop ringing if ended or rejected; for 1-on-1 if answered elsewhere
+    if (this.incomingCall && this.incomingCall.callId === call.callId) {
+      if (call.status === 'ended' || call.status === 'rejected') {
+        callRinger.stop();
+        this.notifyIncomingCall(null);
+      } else if (!call.isGroup && call.status === 'connected') {
+        callRinger.stop();
+        this.notifyIncomingCall(null);
+      }
+    }
+
     if (this.activeCall && this.activeCall.callId === call.callId) {
       this.activeCall = {
         ...call,
@@ -1285,16 +1820,75 @@ class CallService {
     }
   }
 
-  private handleCallEnded(callId: string, reason?: string) {
+  private handleCallEnded(callId: string, reason?: string, duration?: string) {
+    let callTitle = 'Call';
+    let durStr = duration;
+
     if (this.incomingCall && this.incomingCall.callId === callId) {
+      callTitle = this.incomingCall.isGroup
+        ? `#${this.incomingCall.channelName || this.incomingCall.channelId || 'channel'} Group Call`
+        : `Call from ${this.incomingCall.initiator.name}`;
       callRinger.stop();
       this.notifyIncomingCall(null);
     }
+
     if (this.activeCall && this.activeCall.callId === callId) {
+      callTitle = this.activeCall.isGroup
+        ? `#${this.activeCall.channelName || this.activeCall.channelId || 'channel'} Group Call`
+        : (this.activeCall.targetUser?.name ? `Call with ${this.activeCall.targetUser.name}` : `Call with ${this.activeCall.initiator.name}`);
       callRinger.stop();
       callRinger.playHangupChime();
-      this.cleanupCallState();
+
+      if (!durStr && this.activeCall.connectedAt) {
+        const diff = Math.floor((Date.now() - new Date(this.activeCall.connectedAt).getTime()) / 1000);
+        const mins = Math.floor(diff / 60);
+        const secs = diff % 60;
+        durStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+      }
+
+      this.activeCall.status = 'ended';
+      this.activeCall.endedAt = new Date().toISOString();
+      this.activeCall.endedReason = reason || 'Call completed';
+      this.activeCall.endedDuration = durStr || '00:00';
+      this.notifyCallState();
+
+      if (this.screenStream) {
+        this.screenStream.getTracks().forEach(track => track.stop());
+        this.screenStream = null;
+      }
+      this.isScreenSharing = false;
+      this.savedCameraTrack = null;
+
+      if (this.localStream) {
+        this.localStream.getTracks().forEach(track => track.stop());
+        this.localStream = null;
+      }
+
+      this.peerConnections.forEach(pc => pc.close());
+      this.peerConnections.clear();
+      this.remoteStreams.clear();
+      this.notifyRemoteStreams();
+
+      setTimeout(() => {
+        if (this.activeCall && this.activeCall.callId === callId) {
+          this.cleanupCallState();
+        }
+      }, 3500);
     }
+
+    // Always inform subscribers that the call has ended
+    this.onCallEndedListeners.forEach(cb => {
+      try {
+        cb({
+          callId,
+          reason: reason || 'Call ended',
+          duration: durStr || '00:00',
+          title: callTitle,
+        });
+      } catch (err) {
+        console.warn('onCallEnded listener error:', err);
+      }
+    });
   }
 
   private async handleIncomingSignal(signal: CallSignalMessage) {
@@ -1315,8 +1909,11 @@ class CallService {
       }
 
       case 'CALL_ACCEPT':
+        callRinger.stop();
+        if (this.incomingCall && this.incomingCall.callId === signal.callId) {
+          this.notifyIncomingCall(null);
+        }
         if (this.activeCall && this.activeCall.callId === signal.callId) {
-          callRinger.stop();
           this.activeCall.status = 'connected';
           if (!this.activeCall.connectedAt) {
             this.activeCall.connectedAt = new Date().toISOString();
@@ -1338,7 +1935,7 @@ class CallService {
                 callId: signal.callId,
                 callType: this.activeCall.callType,
                 isGroup: Boolean(this.activeCall.isGroup),
-                caller: this.activeCall.initiator,
+                caller: { id: this.currentUserId, name: this.currentUserName || 'User' },
                 targetUserId: peerId,
                 sdp: offer,
                 timestamp: new Date().toISOString(),
@@ -1350,6 +1947,45 @@ class CallService {
         }
         break;
 
+      case 'CALL_JOIN': {
+        callRinger.stop();
+        if (this.incomingCall && this.incomingCall.callId === signal.callId) {
+          this.notifyIncomingCall(null);
+        }
+        if (this.activeCall && this.activeCall.callId === signal.callId) {
+          this.activeCall.status = 'connected';
+          if (!this.activeCall.connectedAt) {
+            this.activeCall.connectedAt = new Date().toISOString();
+          }
+          if (signal.participant && !this.activeCall.participants.some(p => p.id === signal.participant!.id)) {
+            this.activeCall.participants.push(signal.participant);
+          }
+          this.notifyCallState();
+
+          const joinerId = signal.participant?.id || signal.caller?.id;
+          if (joinerId && joinerId !== this.currentUserId) {
+            const pc = this.getOrCreatePeerConnection(joinerId);
+            try {
+              const offer = await pc.createOffer();
+              await pc.setLocalDescription(offer);
+              this.sendSignal({
+                type: 'CALL_OFFER',
+                callId: signal.callId,
+                callType: this.activeCall.callType,
+                isGroup: true,
+                caller: { id: this.currentUserId, name: this.currentUserName || 'User' },
+                targetUserId: joinerId,
+                sdp: offer,
+                timestamp: new Date().toISOString(),
+              });
+            } catch (e) {
+              console.warn('[CallService] WebRTC offer on CALL_JOIN error:', e);
+            }
+          }
+        }
+        break;
+      }
+
       case 'CALL_REJECT':
       case 'CALL_END':
         if (this.incomingCall && this.incomingCall.callId === signal.callId) {
@@ -1357,19 +1993,35 @@ class CallService {
           this.notifyIncomingCall(null);
         }
         if (this.activeCall && this.activeCall.callId === signal.callId) {
-          callRinger.stop();
-          callRinger.playHangupChime();
-          this.cleanupCallState();
+          this.handleCallEnded(
+            signal.callId, 
+            signal.type === 'CALL_REJECT' ? 'Call declined' : 'Call ended by remote participant'
+          );
         }
         break;
 
       case 'CALL_OFFER': {
+        callRinger.stop();
         const isOfferTarget = this.isTargetForMe(signal.targetUserId, (signal as any).targetPhone, (signal as any).targetName);
-        if (isOfferTarget || signal.isGroup) {
+        const shouldProcessOffer = signal.targetUserId ? isOfferTarget : (signal.isGroup || isOfferTarget);
+        if (shouldProcessOffer) {
           if (!this.localStream) {
             await this.acquireMediaStream(signal.callType || 'video');
           }
           const pc = this.getOrCreatePeerConnection(signal.caller.id);
+
+          const isOfferCollision = pc.signalingState !== 'stable';
+          if (isOfferCollision) {
+            const isPolite = this.currentUserId.localeCompare(signal.caller.id) < 0;
+            if (!isPolite) {
+              console.log('[CallService] Impolite peer ignoring colliding offer from', signal.caller.id);
+              return;
+            }
+            try {
+              await pc.setLocalDescription({ type: 'rollback' } as any);
+            } catch {}
+          }
+
           try {
             await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
             // Drain buffered ICE candidates
@@ -1382,6 +2034,9 @@ class CallService {
               }
               this.pendingIceCandidates.delete(signal.caller.id);
             }
+
+            this.attachLocalTracksToPeer(pc);
+
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             this.sendSignal({
@@ -1402,8 +2057,20 @@ class CallService {
       }
 
       case 'CALL_ANSWER': {
+        callRinger.stop();
+        if (this.incomingCall && this.incomingCall.callId === signal.callId) {
+          this.notifyIncomingCall(null);
+        }
+        if (this.activeCall && this.activeCall.callId === signal.callId) {
+          this.activeCall.status = 'connected';
+          if (!this.activeCall.connectedAt) {
+            this.activeCall.connectedAt = new Date().toISOString();
+          }
+          this.notifyCallState();
+        }
         const isAnswerTarget = this.isTargetForMe(signal.targetUserId, (signal as any).targetPhone, (signal as any).targetName);
-        if (isAnswerTarget || signal.isGroup) {
+        const shouldProcessAnswer = signal.targetUserId ? isAnswerTarget : (signal.isGroup || isAnswerTarget);
+        if (shouldProcessAnswer) {
           const pc = this.peerConnections.get(signal.caller.id);
           if (pc) {
             try {
@@ -1428,7 +2095,8 @@ class CallService {
 
       case 'CALL_CANDIDATE': {
         const isCandidateTarget = this.isTargetForMe(signal.targetUserId, (signal as any).targetPhone, (signal as any).targetName);
-        if (isCandidateTarget || signal.isGroup) {
+        const shouldProcessCandidate = signal.targetUserId ? isCandidateTarget : (signal.isGroup || isCandidateTarget);
+        if (shouldProcessCandidate) {
           const pc = this.peerConnections.get(signal.caller.id);
           if (signal.candidate) {
             if (pc && pc.remoteDescription && pc.remoteDescription.type) {
@@ -1450,15 +2118,25 @@ class CallService {
 
       case 'CALL_PARTICIPANT_UPDATE':
         if (this.activeCall && this.activeCall.callId === signal.callId && signal.participant) {
-          const idx = this.activeCall.participants.findIndex(p => p.id === signal.participant!.id);
+          const pId = signal.participant.id;
+          const pPhone = signal.participant.phone;
+          const idx = this.activeCall.participants.findIndex(p => p.id === pId || (pPhone && p.phone === pPhone));
           if (idx >= 0) {
             this.activeCall.participants[idx] = {
               ...this.activeCall.participants[idx],
               ...signal.participant,
               isLocal: signal.participant.id === this.currentUserId,
             };
-            this.notifyCallState();
+          } else {
+            this.activeCall.participants.push({
+              ...signal.participant,
+              isLocal: signal.participant.id === this.currentUserId,
+            });
           }
+          if (signal.participant.isScreenSharing) {
+            this.activeCall.callType = 'video';
+          }
+          this.notifyCallState();
         }
         break;
     }

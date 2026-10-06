@@ -14,6 +14,7 @@ interface BottomNavBarProps {
   pendingCount?: number;
   myCasesCount?: number;
   unreadChatCount?: number;
+  allocatedCount?: number;
 }
 
 export const BottomNavBar: React.FC<BottomNavBarProps> = ({
@@ -24,6 +25,7 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
   pendingCount = 0,
   myCasesCount = 0,
   unreadChatCount = 0,
+  allocatedCount = 0,
 }) => {
   const isSuperUser = userRole === 'super_admin' || userRole === 'super_user' || userRole === 'chief_officer' || userRole === 'field_officer';
 
@@ -129,11 +131,15 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
           >
             <div className={`p-1 rounded-lg relative ${activeTab === 'super_portal' ? 'bg-emerald-50 text-emerald-800' : ''}`}>
               <Shield className="w-4 sm:w-5 h-4 sm:h-5" />
-              {pendingCount > 0 && (
+              {allocatedCount > 0 ? (
+                <span className="absolute -top-1 -right-1.5 min-w-[16px] h-4 px-1 rounded-full bg-red-700 text-white text-[9px] font-black flex items-center justify-center animate-bounce shadow-xs">
+                  {allocatedCount}
+                </span>
+              ) : pendingCount > 0 ? (
                 <span className="absolute -top-1 -right-1.5 w-4 h-4 rounded-full bg-red-800 text-white text-[9px] font-bold flex items-center justify-center animate-pulse">
                   {pendingCount}
                 </span>
-              )}
+              ) : null}
             </div>
             <span className="text-[9.5px] sm:text-[10px] leading-tight truncate w-full text-center mt-0.5 font-medium">
               {userRole === 'super_admin' ? 'Admin' : 'Portal'}
