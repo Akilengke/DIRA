@@ -164,6 +164,30 @@ export const HomeDashboard: React.FC<HomeDashboardProps> = ({
 
       {/* 5. Clean Live Map Radar (Replaces the old Recent Cases section) */}
       <div className="bg-white rounded-3xl border border-zinc-200 overflow-hidden shadow-2xs">
+        {/* Sub-County Density Shading Header */}
+        <div className="px-3.5 py-2.5 bg-gradient-to-r from-red-50/90 via-white to-zinc-50 border-b border-zinc-200/80 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-red-600 animate-pulse" />
+            <h3 className="text-xs font-black uppercase tracking-wider text-zinc-950 font-display">
+              Kitui Sub-County Incident Map
+            </h3>
+            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-red-100 text-red-900 border border-red-200">
+              Choropleth Shading
+            </span>
+          </div>
+          <div className="flex items-center gap-2 text-[11px] text-zinc-500 font-medium">
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-2 rounded-xs bg-[#7f1d1d] border border-[#991b1b]" />
+              <span className="font-bold text-[#7f1d1d]">Concentrated Red:</span> Most Cases
+            </span>
+            <span>•</span>
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-2 rounded-xs bg-[#fca5a5] border border-[#f87171]" />
+              <span className="font-bold text-red-600">Light Red:</span> Few Cases
+            </span>
+          </div>
+        </div>
+
         {/* Embedded Map Radar View: Incident Map Only */}
         <div className="p-2 sm:p-3">
           <HotspotsMapView

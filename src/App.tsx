@@ -93,7 +93,7 @@ const STORAGE_KEY_USER = 'kaa_rada_current_user_v2';
 const SAVED_PROFILES_KEY = 'kaa_rada_saved_profiles_v2';
 
 export default function App() {
-  // Load persistent cases from storage - defaults to empty [] so users start with clean slate for new data
+  // Load persistent cases from storage - defaults to INITIAL_CASES so home map displays subcounty shading
   const [cases, setCases] = useState<DonkeyCase[]>(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEY_CASES);
@@ -107,8 +107,8 @@ export default function App() {
     } catch (e) {
       console.error('Failed to parse saved cases:', e);
     }
-    // Default to clean empty list for real primary user data
-    return [];
+    // Default to initial Kitui baseline cases for map shading
+    return INITIAL_CASES;
   });
 
   // Current user state (supports null for logged-out / guest state)

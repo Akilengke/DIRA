@@ -39,6 +39,11 @@ import {
 import { NearbySuperUsersMapSection } from './NearbySuperUsersMapSection';
 import { RemoteLogoutConfirmModal } from './RemoteLogoutConfirmModal';
 import { OfflineMapCacheModal } from './OfflineMapCacheModal';
+import { 
+  KITUI_SUBCOUNTIES_GEO, 
+  getSubCountyShadingStyle, 
+  normalizeSubCountyName 
+} from '../data/kituiSubCountiesGeo';
 
 // Leaflet dynamic imports / globals
 declare global {
@@ -88,6 +93,7 @@ export const HotspotsMapView: React.FC<HotspotsMapViewProps> = ({
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<any>(null);
+  const subCountyLayerGroupRef = useRef<any>(null);
   const markersLayerGroupRef = useRef<any>(null);
   const devicesLayerGroupRef = useRef<any>(null);
   const userLocationLayerGroupRef = useRef<any>(null);
@@ -110,6 +116,20 @@ export const HotspotsMapView: React.FC<HotspotsMapViewProps> = ({
   const [isMapLoaded, setIsMapLoaded] = useState<boolean>(false);
   const [isHeatLoaded, setIsHeatLoaded] = useState<boolean>(false);
   const [isSyncingGps, setIsSyncingGps] = useState<boolean>(false);
+
+  // Sub-County Choropleth Shading State (Shades subcounties with cases: concentrated red for most cases, light red for few)
+  const [showSubCountyShading, setShowSubCountyShading] = useState<boolean>(() => {
+    const val = localStorage.getItem('kaa_rada_layer_subcounty_shading');
+    return val !== null ? val === 'true' : true;
+  });
+
+  const toggleSubCountyShading = () => {
+    setShowSubCountyShading((prev) => {
+      const next = !prev;
+      localStorage.setItem('kaa_rada_layer_subcounty_shading', String(next));
+      return next;
+    });
+  };
 
   // Density Overlay States
   const [showDensityOverlay, setShowDensityOverlay] = useState<boolean>(() => {
@@ -515,6 +535,10 @@ export const HotspotsMapView: React.FC<HotspotsMapViewProps> = ({
     // Zoom Controls on top right
     L.control.zoom({ position: 'topright' }).addTo(map);
 
+    // Sub-County Choropleth Shading Layer (Added first as background polygon layer)
+    const subCountyGroup = L.layerGroup().addTo(map);
+    subCountyLayerGroupRef.current = subCountyGroup;
+
     const densityGroup = L.layerGroup().addTo(map);
     densityClustersLayerGroupRef.current = densityGroup;
 
@@ -741,6 +765,209 @@ export const HotspotsMapView: React.FC<HotspotsMapViewProps> = ({
       });
     }
   }, [filteredCases, showDensityOverlay, densityViewMode, isHeatLoaded, hotspotClusters]);
+
+  // 0b. Update Sub-County Choropleth Shading Layer
+  // Every subcounty that has cases is shaded:
+  // - Subcounty with the most cases has concentrated red (#7f1d1d, fillOpacity: 0.70)
+  // - Subcounties with few cases have light red (#fca5a5, fillOpacity: 0.28)
+  // - Subcounties with 0 cases have no red shading (transparent)
+  useEffect(() => {
+    if (!mapInstanceRef.current || !subCountyLayerGroupRef.current || !window.L) return;
+
+    const L = window.L;
+    const subCountyGroup = subCountyLayerGroupRef.current;
+    subCountyGroup.clearLayers();
+
+    if (!showSubCountyShading) return;
+
+    // Calculate aggregated case counts per Kitui subcounty
+    const statsBySubCounty: Record<string, { count: number; totalDonkeys: number; theftCount: number; slaughterCount: number; crueltyCount: number; cases: DonkeyCase[] }> = {};
+
+    for (const sc of KITUI_SUBCOUNTIES_GEO) {
+      statsBySubCounty[sc.name] = {
+        count: 0,
+        totalDonkeys: 0,
+        theftCount: 0,
+        slaughterCount: 0,
+        crueltyCount: 0,
+        cases: [],
+      };
+    }
+
+    filteredCases.forEach((c) => {
+      const raw = c.location?.subCounty;
+      const normalized = normalizeSubCountyName(raw);
+      if (normalized && statsBySubCounty[normalized]) {
+        statsBySubCounty[normalized].count += 1;
+        statsBySubCounty[normalized].totalDonkeys += (c.donkeysCount || 1);
+        if (c.category === 'donkey_theft') statsBySubCounty[normalized].theftCount += 1;
+        else if (c.category === 'bush_slaughter') statsBySubCounty[normalized].slaughterCount += 1;
+        else statsBySubCounty[normalized].crueltyCount += 1;
+        statsBySubCounty[normalized].cases.push(c);
+      }
+    });
+
+    const countsList = Object.values(statsBySubCounty).map((s) => s.count);
+    const maxCases = Math.max(0, ...countsList);
+
+    KITUI_SUBCOUNTIES_GEO.forEach((sc) => {
+      const stats = statsBySubCounty[sc.name] || { count: 0, totalDonkeys: 0, theftCount: 0, slaughterCount: 0, crueltyCount: 0, cases: [] };
+      const caseCount = stats.count;
+      const style = getSubCountyShadingStyle(caseCount, maxCases);
+      const isMax = style.isMax && caseCount > 0;
+      const hasCases = caseCount > 0;
+
+      // 1. Sub-county polygon
+      const polygon = L.polygon(sc.polygon, {
+        fillColor: style.fillColor,
+        fillOpacity: style.fillOpacity,
+        color: style.color,
+        weight: style.weight,
+        dashArray: style.dashArray,
+        smoothFactor: 1.0,
+      });
+
+      const popupHtml = `
+        <div style="padding: 10px; font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif; min-width: 230px;">
+          <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px;">
+            <span style="
+              font-size: 9px;
+              font-weight: 800;
+              text-transform: uppercase;
+              background: ${isMax ? '#7f1d1d' : hasCases ? '#dc2626' : '#71717a'};
+              color: white;
+              padding: 2px 7px;
+              border-radius: 5px;
+            ">
+              ${isMax ? '🔥 MOST CASES (CONCENTRATED RED)' : hasCases ? '⚠️ HAS REPORTED CASES' : 'NO CASES REPORTED'}
+            </span>
+            <span style="font-size: 10px; font-weight: 700; color: #71717a;">Kitui County</span>
+          </div>
+
+          <div style="font-weight: 900; font-size: 14px; color: #09090b; margin: 2px 0;">
+            ${sc.name} Sub-County
+          </div>
+          <div style="font-size: 11px; color: #52525b; margin-bottom: 6px;">
+            HQ: <strong>${sc.headquarters}</strong> • Wards: ${sc.wards.slice(0, 3).join(', ')}...
+          </div>
+
+          <div style="background: ${hasCases ? (isMax ? '#fef2f2' : '#fafafa') : '#f4f4f5'}; border: 1px solid ${hasCases ? (isMax ? '#fecaca' : '#e4e4e7') : '#e4e4e7'}; padding: 8px; border-radius: 8px; font-size: 11px; margin-bottom: 6px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <span style="color: #52525b;">Reported Incidents:</span>
+              <strong style="color: ${isMax ? '#991b1b' : hasCases ? '#dc2626' : '#71717a'}; font-size: 12px;">
+                ${caseCount} ${caseCount === 1 ? 'Case' : 'Cases'}
+              </strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; margin-bottom: 4px;">
+              <span style="color: #52525b;">Donkeys Impacted:</span>
+              <strong style="color: #09090b;">${stats.totalDonkeys} Donkeys</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between;">
+              <span style="color: #52525b;">Map Shading:</span>
+              <strong style="color: ${style.fillColor === 'transparent' ? '#71717a' : style.fillColor};">
+                ${style.label}
+              </strong>
+            </div>
+          </div>
+
+          ${caseCount > 0 ? `
+            <div style="font-size: 10px; color: #52525b; margin-bottom: 8px;">
+              <span>• Theft: <strong>${stats.theftCount}</strong></span> • 
+              <span>Slaughter: <strong>${stats.slaughterCount}</strong></span> • 
+              <span>Other: <strong>${stats.crueltyCount}</strong></span>
+            </div>
+          ` : ''}
+
+          <button 
+            type="button" 
+            class="leaflet-subcounty-filter-btn" 
+            data-subcounty="${sc.name}"
+            style="width: 100%; display: flex; align-items: center; justify-content: center; gap: 4px; background: #18181b; color: white; padding: 6px 10px; border-radius: 8px; font-weight: 800; font-size: 11px; border: none; cursor: pointer;"
+          >
+            🔍 Focus on ${sc.name}
+          </button>
+        </div>
+      `;
+
+      polygon.bindPopup(popupHtml);
+
+      polygon.on('mouseover', function(this: any) {
+        if (hasCases) {
+          this.setStyle({
+            weight: style.weight + 1.5,
+            fillOpacity: Math.min(0.85, style.fillOpacity + 0.15),
+          });
+        } else {
+          this.setStyle({
+            fillColor: '#fee2e2',
+            fillOpacity: 0.10,
+            weight: 1.5,
+          });
+        }
+      });
+
+      polygon.on('mouseout', function(this: any) {
+        this.setStyle({
+          fillColor: style.fillColor,
+          fillOpacity: style.fillOpacity,
+          color: style.color,
+          weight: style.weight,
+        });
+      });
+
+      subCountyGroup.addLayer(polygon);
+
+      // 2. Center Label Badge for each subcounty with cases
+      if (hasCases) {
+        const isConcentrated = style.intensityLevel === 'concentrated' || isMax;
+        const badgeBg = isConcentrated
+          ? 'linear-gradient(135deg, #7f1d1d, #991b1b)'
+          : style.intensityLevel === 'high'
+          ? 'linear-gradient(135deg, #b91c1c, #dc2626)'
+          : style.intensityLevel === 'moderate'
+          ? 'linear-gradient(135deg, #ef4444, #f87171)'
+          : 'linear-gradient(135deg, #f87171, #fca5a5)';
+
+        const badgeTextColor = (style.intensityLevel === 'few') ? '#7f1d1d' : '#ffffff';
+        const badgeBorder = isConcentrated ? '2px solid #ffffff' : '1.5px solid #ffffff';
+
+        const labelHtml = `
+          <div style="
+            background: ${badgeBg};
+            color: ${badgeTextColor};
+            padding: 3px 8px;
+            border-radius: 9999px;
+            border: ${badgeBorder};
+            box-shadow: 0 4px 10px rgba(0,0,0,0.35);
+            font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+            font-weight: 900;
+            font-size: 10px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+            cursor: pointer;
+            transform: translate(-50%, -50%);
+          ">
+            <span>${isConcentrated ? '🔥' : '📍'}</span>
+            <span>${sc.name}: ${caseCount} ${caseCount === 1 ? 'case' : 'cases'}</span>
+            ${isConcentrated ? '<span style="font-size: 8px; background: #ffffff; color: #7f1d1d; padding: 1px 4px; border-radius: 999px; font-weight: 900;">MOST</span>' : ''}
+          </div>
+        `;
+
+        const labelIcon = L.divIcon({
+          className: 'subcounty-shading-label-icon',
+          html: labelHtml,
+          iconSize: [0, 0],
+          iconAnchor: [0, 0],
+        });
+
+        const labelMarker = L.marker(sc.center, { icon: labelIcon });
+        labelMarker.bindPopup(popupHtml);
+        subCountyGroup.addLayer(labelMarker);
+      }
+    });
+  }, [filteredCases, showSubCountyShading, isMapLoaded]);
 
   // 1. Update Cases Markers
   useEffect(() => {
@@ -1019,6 +1246,18 @@ export const HotspotsMapView: React.FC<HotspotsMapViewProps> = ({
             deviceType: 'mobile',
             isOnline: true,
           } as LoggedInDevice);
+        }
+        return;
+      }
+
+      // Handle Sub-County Focus button click from subcounty popup
+      const scBtn = (e.target as HTMLElement).closest('.leaflet-subcounty-filter-btn') as HTMLElement;
+      if (scBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        const scName = scBtn.getAttribute('data-subcounty');
+        if (scName) {
+          handleSubCountySelect(scName);
         }
       }
     };
@@ -1489,6 +1728,23 @@ export const HotspotsMapView: React.FC<HotspotsMapViewProps> = ({
               </div>
             )}
 
+            {/* Sub-County Shading Toggle */}
+            <button
+              onClick={toggleSubCountyShading}
+              className={`px-2.5 py-1 rounded-xl font-bold flex items-center gap-1.5 transition-all ${
+                showSubCountyShading
+                  ? 'bg-rose-950 text-rose-200 border border-rose-800 shadow-2xs'
+                  : 'bg-zinc-100 text-zinc-500 hover:bg-zinc-200'
+              }`}
+              title="Shade every subcounty with cases: concentrated red for most cases, light red for few"
+            >
+              <span className="w-2.5 h-2.5 rounded-xs bg-[#7f1d1d] border border-rose-400" />
+              <span>Sub-County Shading</span>
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${showSubCountyShading ? 'bg-rose-900 text-rose-100' : 'bg-zinc-200 text-zinc-600'}`}>
+                {showSubCountyShading ? 'ON' : 'OFF'}
+              </span>
+            </button>
+
             {/* Incident Pins Toggle */}
             <button
               onClick={toggleCasesLayer}
@@ -1757,7 +2013,31 @@ export const HotspotsMapView: React.FC<HotspotsMapViewProps> = ({
 
         {/* Map Legend on bottom left (when cases exist) */}
         {filteredCases.length > 0 && (
-          <div className="absolute bottom-3 left-3 z-20 bg-white/95 backdrop-blur p-2.5 rounded-2xl shadow-md border border-zinc-200 text-[10px] space-y-1.5 hidden sm:block max-w-[240px]">
+          <div className="absolute bottom-3 left-3 z-20 bg-white/95 backdrop-blur p-2.5 rounded-2xl shadow-md border border-zinc-200 text-[10px] space-y-1.5 hidden sm:block max-w-[250px]">
+            {/* Sub-County Choropleth Shading Key */}
+            {showSubCountyShading && (
+              <div className="pb-1.5 border-b border-zinc-200/80 space-y-1">
+                <div className="flex items-center justify-between text-[9px] font-extrabold uppercase text-zinc-500 mb-0.5">
+                  <span>Sub-County Shading</span>
+                  <span className="text-[#991B1B] font-black">Choropleth</span>
+                </div>
+                <div className="grid grid-cols-1 gap-1 text-[9px]">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-3.5 h-2.5 rounded-xs bg-[#7f1d1d] border border-[#991b1b] shrink-0" />
+                    <span className="font-extrabold text-zinc-900">Concentrated Red (Most Cases)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-3.5 h-2.5 rounded-xs bg-[#fca5a5] border border-[#f87171] shrink-0" />
+                    <span className="font-bold text-zinc-700">Light Red (Few Cases)</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-3.5 h-2.5 rounded-xs bg-white border border-dashed border-zinc-400 shrink-0" />
+                    <span className="font-medium text-zinc-500">Unshaded (0 Cases)</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {showDensityOverlay && (
               <div className="pb-1.5 border-b border-zinc-200/80">
                 <div className="flex items-center justify-between text-[9px] font-extrabold uppercase text-zinc-500 mb-1">
