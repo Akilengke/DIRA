@@ -93,6 +93,19 @@ Respect each platform's terms of service and local privacy law when monitoring.
   callout on the map and a notification. Each alert links to Google Maps' traffic view (Google's own traffic layer
   can't be embedded outside Google Maps). Shown at city zoom; flooded areas from news are shaded blue.
 
+## Air traffic control listening
+
+Radio & SOS → **Air traffic control**: look up any airport by ICAO, IATA or city (e.g. KLGA) to see its published
+frequencies (OurAirports). Press one to tune your local receiver, or play a **saved stream**: a feed you're entitled to
+relay (your own scanner/SDR feed, an Icecast or Broadcastify feed you have rights to; .pls/.m3u playlists work). Saved
+streams are relayed to the signed-in admin only, and their addresses are never shown to viewers.
+
+All audio runs through the **voice controls**: volume up to 400% with a limiter, a squelch that mutes static between
+calls, and clarity presets (speech band-pass, presence boost and compression).
+
+LiveATC.net prohibits third-party use of its streams, so Scavenge links to LiveATC's own player for each airport and
+refuses liveatc.net stream addresses unless you have LiveATC's written permission (`LIVEATC_PERMISSION=1`).
+
 ## Fastest route (operators)
 
 Map toolbar → **Route** (or the Route tab beside the map). Enter From and To (address, place or `lat,lon`). Scavenge
@@ -138,7 +151,7 @@ provider's usage policy for heavy traffic.
 /api/brief?country= · /api/events?layers=quake,nature,news,weather · /api/rules · /api/alerts · /api/watch ·
 /api/sources · /api/satellite?date=YYYY-MM-DD · /api/stream (SSE) · /api/emergency · /api/radio/log ·
 /api/radio/stations?country=&q= · /api/radio/kiwi?lat=&lon=&hz= · /api/sdr/status · /api/sdr/audio · /api/intercom · /api/tx/status ·
-/api/flights?lamin=&lomin=&lamax=&lomax= · /api/traffic/incidents?lamin=&lomin=&lamax=&lomax= · /api/traffic/flow/{style}/{z}/{x}/{y}.png · POST /api/route {from, to} (operator) · /api/flights/find?q= · /api/flights/route?callsign= · /api/airports/near?lat=&lon=`
+/api/flights?lamin=&lomin=&lamax=&lomax= · /api/traffic/incidents?lamin=&lomin=&lamax=&lomax= · /api/traffic/flow/{style}/{z}/{x}/{y}.png · POST /api/route {from, to} (admin) · /api/airports/find?q= · GET/POST/DELETE /api/streams · /api/streams/relay?id= (admin) · /api/flights/find?q= · /api/flights/route?callsign= · /api/airports/near?lat=&lon=`
 `POST /api/rules {name, terms[], platforms[], country, mood, match, delivery{inapp,browser,sound,webhook,ntfy}} ·
 POST /api/watch {terms[]} · DELETE /api/rules?id= · POST /api/sdr/tune {freqs[], mode, squelch} ·
 POST /api/sdr/stop · POST /api/intercom (JSON text or raw audio) · POST /api/tx (raw audio; X-Freq, X-Operator-Pin)`

@@ -2,6 +2,15 @@
   "domain": "scavenge.nakedtechnologies.tech",
   "username": "u858513566",
   "type": "nodejs",
-  "build": { "node_version": 24, "app_type": "other", "entry_file": "server/index.js", "build_script": "build" },
-  "source": "GitHub Akilengke/DIRA branch scavenge-deploy, scavenge-src/app.zip"
+  "build": {
+    "node_version": 24,
+    "app_type": "other",
+    "entry_file": "server/index.js",
+    "build_script": "build"
+  },
+  "source": "GitHub Akilengke/DIRA branch scavenge-deploy \u2192 hosting_git_deploy-website-repository (dir scavenge-src) \u2192 hosting_nodejs_start-build archive scavenge-src/app.zip",
+  "env": [
+    "SCAVENGE_SECRET",
+    "SCAVENGE_DATA=~/scavenge-data"
+  ]
 }

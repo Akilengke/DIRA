@@ -25,6 +25,8 @@ const accounts = createAccounts({ dataDir: DATA, auth });
 social.setAccounts(accounts);
 const { createTraffic } = require('./connectors/traffic');
 const traffic = createTraffic({ key: () => accounts.key('tomtom'), posts: () => state.posts.slice(-4000) });
+const { createStreams } = require('./engine/streams');
+const streams = createStreams(DATA);
 const { createRouting } = require('./connectors/routing');
 const routing = createRouting({ key: () => accounts.key('tomtom'), traffic, posts: () => state.posts.slice(-4000) });
 
@@ -117,6 +119,10 @@ const routes = {
   },
   'GET /api/conflicts': () => situational.conflicts(),
   'GET /api/weather/radar': () => situational.radar(),
+  'GET /api/airports/find': q => flights.findAirports(DATA, q.get('q')),
+  'GET /api/streams': () => streams.list(),
+  'POST /api/streams': async (q, req) => streams.add(await readBody(req)),
+  'DELETE /api/streams': q => streams.remove(q.get('id')),
   'GET /api/airports/near': q => flights.nearAirports(DATA, q.get('lat'), q.get('lon'), q.get('n')),
   'GET /api/sdr/status': () => sdr.status(),
   'POST /api/sdr/tune': async (q, req) => { const b = await readBody(req); return sdr.start({ freqs: b.freqs || [b.hz], mode: b.mode, squelch: b.squelch, gain: b.gain }); },
@@ -162,6 +168,10 @@ async function handle(req, res) {
     return res.end();
   }
   { const m = /^\/api\/traffic\/flow\/([\w-]+)\/(\d+)\/(\d+)\/(\d+)\.png$/.exec(u.pathname); if (m) return traffic.tile(m[1], +m[2], +m[3], +m[4], res); }
+  if (u.pathname === '/api/streams/relay') {
+    if (!auth.isOperator(req)) return send(res, 401, { error: 'Sign in as admin to listen to saved streams.' });
+    return streams.relay(u.searchParams.get('id'), req, res);
+  }
   if (u.pathname === '/api/sdr/audio') return sdr.listen(req, res);
   if (u.pathname.startsWith('/api/radio/clip/')) return sdr.clip(path.basename(u.pathname, '.wav'), res);
   if (u.pathname.startsWith('/api/intercom/audio/')) return intercom.audio(path.basename(u.pathname), res);

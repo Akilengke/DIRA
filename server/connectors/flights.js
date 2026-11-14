@@ -177,4 +177,6 @@ async function loadAirports(dataDir) {
 }
 async function nearAirports(dataDir, lat, lon, n = 6) { return RAD.nearestAirports(+lat, +lon, Math.min(+n || 6, 20), await loadAirports(dataDir)); }
 
-module.exports = { inBox, find, route, nearAirports, loadAirports, parseCSV, opensky, norm };
+async function findAirports(dataDir, q) { return RAD.findAirports(q, await loadAirports(dataDir), 8); }
+
+module.exports = { inBox, find, route, nearAirports, findAirports, loadAirports, parseCSV, opensky, norm };

@@ -66,6 +66,7 @@
 
   // Major airports (fallback when the full OurAirports database is not loaded). [ICAO, IATA, name, city, country, lat, lon]
   const AIRPORTS = [
+    ['KLGA','LGA','LaGuardia','New York','United States',40.7769,-73.874],
     ['HKJK','NBO','Jomo Kenyatta Intl','Nairobi','Kenya',-1.3192,36.9278], ['HKNW','WIL','Wilson','Nairobi','Kenya',-1.3217,36.8148], ['HKMO','MBA','Moi Intl','Mombasa','Kenya',-4.0348,39.5942],
     ['HKKI','KIS','Kisumu Intl','Kisumu','Kenya',-0.0861,34.7289], ['HKEL','EDL','Eldoret Intl','Eldoret','Kenya',0.4045,35.2389], ['HUEN','EBB','Entebbe Intl','Entebbe','Uganda',0.0424,32.4435],
     ['HTDA','DAR','Julius Nyerere Intl','Dar es Salaam','Tanzania',-6.8781,39.2026], ['HTKJ','JRO','Kilimanjaro Intl','Kilimanjaro','Tanzania',-3.4294,37.0745], ['HRYR','KGL','Kigali Intl','Kigali','Rwanda',-1.9686,30.1395],
@@ -85,7 +86,19 @@
   ].map(([icao, iata, name, city, country, lat, lon]) => ({ icao, iata, name, city, country, lat, lon }));
   const SQUAWKS = { '7700': 'General emergency', '7600': 'Radio failure', '7500': 'Unlawful interference', '7000': 'VFR conspicuity (Europe)', '1200': 'VFR (Americas)', '2000': 'Entering controlled airspace without a code' };
   const nm = (a, b, c, d) => { const r = Math.PI / 180, x = Math.sin((c - a) * r / 2) ** 2 + Math.cos(a * r) * Math.cos(c * r) * Math.sin((d - b) * r / 2) ** 2; return 2 * 3440.065 * Math.asin(Math.sqrt(x)); };
+  // published frequencies for airports in the built-in list (the server uses the full OurAirports data)
+  const REF_FREQS = {
+    KLGA: [['ATIS', 'D-ATIS', 127.05], ['CLD', 'Clearance delivery', 135.2], ['GND', 'Ground', 121.7], ['TWR', 'Tower', 118.7], ['APP', 'New York Approach (final)', 120.8], ['DEP', 'New York Departure', 120.4]],
+    KJFK: [['ATIS', 'ATIS', 128.725], ['CLD', 'Clearance delivery', 135.05], ['GND', 'Ground', 121.9], ['TWR', 'Tower', 119.1], ['APP', 'Kennedy Approach', 132.4]],
+    HKJK: [['ATIS', 'ATIS', 127.2], ['GND', 'Ground', 121.9], ['TWR', 'Tower', 118.7], ['APP', 'Nairobi Approach', 119.7]]
+  };
+  function withFreqs(a) { return Object.assign({ freqs: (REF_FREQS[a.icao] || []).map(([type, desc, mhz]) => ({ type, desc, mhz })) }, a); }
+  function findAirports(q, list, n) {
+    q = String(q || '').trim().toLowerCase(); if (q.length < 2) return [];
+    const L = list || AIRPORTS.map(withFreqs), score = a => (a.icao || '').toLowerCase() === q ? 0 : (a.iata || '').toLowerCase() === q ? 1 : (a.icao || '').toLowerCase().startsWith(q) ? 2 : (a.city || '').toLowerCase().startsWith(q) ? 3 : (a.name || '').toLowerCase().includes(q) || (a.city || '').toLowerCase().includes(q) ? 4 : 9;
+    return L.map(a => [score(a), a]).filter(x => x[0] < 9).sort((x, y) => x[0] - y[0] || (y[1].size === 'large') - (x[1].size === 'large')).slice(0, n || 8).map(x => x[1]);
+  }
   function nearestAirports(lat, lon, n, list) { return (list || AIRPORTS).map(a => Object.assign({}, a, { nm: Math.round(nm(lat, lon, a.lat, a.lon)) })).sort((a, b) => a.nm - b.nm).slice(0, n || 5); }
 
-  return { CHANNELS, AMATEUR, PROTECTED, parseRanges, txCheck, fmtFreq, NUMBERS, AIRPORTS, SQUAWKS, nearestAirports, nm };
+  return { CHANNELS, AMATEUR, PROTECTED, parseRanges, txCheck, fmtFreq, NUMBERS, AIRPORTS, SQUAWKS, nearestAirports, nm, findAirports, withFreqs };
 });
