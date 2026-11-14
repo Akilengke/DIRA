@@ -8,7 +8,7 @@ async function request(url, opts = {}) {
     const res = await fetch(url, {
       method: opts.method || 'GET',
       headers: Object.assign({ 'User-Agent': UA, Accept: 'application/json' }, opts.body ? { 'Content-Type': 'application/json' } : {}, opts.headers),
-      body: opts.body ? JSON.stringify(opts.body) : undefined,
+      body: opts.raw != null ? opts.raw : opts.body ? JSON.stringify(opts.body) : undefined,
       signal: ctrl.signal
     });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText} from ${new URL(url).host}`);

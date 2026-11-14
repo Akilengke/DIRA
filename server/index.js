@@ -25,6 +25,8 @@ const accounts = createAccounts({ dataDir: DATA, auth });
 social.setAccounts(accounts);
 const { createTraffic } = require('./connectors/traffic');
 const traffic = createTraffic({ key: () => accounts.key('tomtom'), posts: () => state.posts.slice(-4000) });
+const { createRouting } = require('./connectors/routing');
+const routing = createRouting({ key: () => accounts.key('tomtom'), traffic, posts: () => state.posts.slice(-4000) });
 
 const PORT = +process.env.PORT || 8080;
 const PUBLIC = path.join(__dirname, '../public');
@@ -106,6 +108,12 @@ const routes = {
   'GET /api/flights/find': q => demoSim ? demoSim.flights().filter(f => [f.flight, f.reg, f.hex].some(x => x && x.toUpperCase() === String(q.get('q') || '').trim().toUpperCase())) : flights.find(q.get('q')),
   'GET /api/flights/route': q => demoSim ? (() => { const f = demoSim.flights().find(x => x.flight === q.get('callsign')); const A = radioRef.AIRPORTS; return f ? { codes: f.from + '-' + f.to, plausible: true, airports: [A.find(a => a.icao === f.from), A.find(a => a.icao === f.to)] } : null; })() : flights.route(q.get('callsign'), q.get('lat'), q.get('lon')),
   'GET /api/traffic/incidents': q => demoSim ? demoSim.traffic() : traffic.incidents(Object.fromEntries(['lamin', 'lomin', 'lamax', 'lomax'].map(k => [k, q.get(k)]))),
+  'POST /api/route': async (q, req) => {
+    if (!auth.isOperator(req)) throw Object.assign(new Error(auth.isSetup() ? 'Route planning is for operators. Sign in first.' : 'Set up the operator sign-in first (Sign in → setup code from the server log).'), { code: 401 });
+    const b = await readBody(req);
+    if (demoSim) return demoSim.route(b.from, b.to);
+    return routing.plan({ from: b.from, to: b.to });
+  },
   'GET /api/conflicts': () => situational.conflicts(),
   'GET /api/weather/radar': () => situational.radar(),
   'GET /api/airports/near': q => flights.nearAirports(DATA, q.get('lat'), q.get('lon'), q.get('n')),

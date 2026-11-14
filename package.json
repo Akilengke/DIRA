@@ -1,15 +1,17 @@
 {
   "name": "scavenge",
   "version": "1.0.0",
-  "description": "Scavenge — global social-media & earth-event monitoring with alerts, AI trend analysis and a sci-fi world map.",
+  "description": "Scavenge \u2014 global social-media & earth-event monitoring with alerts, AI trend analysis and a sci-fi world map.",
   "main": "server/index.js",
   "license": "MIT",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node server/index.js",
     "build": "node -e \"console.log('Scavenge has no build step')\"",
     "demo": "SCAVENGE_DEMO=1 node server/index.js",
-    "test": "node test/radio.js && node test/accounts.js && node test/smoke.js"
+    "test": "node test/radio.js && node test/accounts.js && node test/route.js && node test/smoke.js"
   },
   "dependencies": {}
 }

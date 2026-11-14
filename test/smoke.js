@@ -32,6 +32,9 @@ const ok = (c, m) => { if (!c) { console.error('✗ ' + m); srv.kill(); process.
   const tr = await fetch(base + '/api/tx', { method: 'POST', headers: { 'X-Freq': '145500000' }, body: Buffer.alloc(3000) });
   ok(tr.status === 403, 'transmit refused when disabled');
   ok(typeof (await j('/api/sdr/status')).available === 'boolean', 'sdr status');
+  const rt = await fetch(base + '/api/route', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: 'JKIA', to: 'Westlands' }) });
+  ok(rt.status === 401, 'route planning needs the operator');
+  ok((await (await fetch(base + '/js/routeplan.js')).text()).includes('ScavengeRoute'), 'route module served');
   const page = await (await fetch(base + '/')).text();
   ok(page.includes('SCAVENGE'), 'frontend served');
   srv.kill(); console.log('All checks passed.');

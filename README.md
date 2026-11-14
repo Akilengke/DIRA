@@ -92,6 +92,19 @@ Respect each platform's terms of service and local privacy law when monitoring.
   callout on the map and a notification. Each alert links to Google Maps' traffic view (Google's own traffic layer
   can't be embedded outside Google Maps). Shown at city zoom; flooded areas from news are shaded blue.
 
+## Fastest route (operators)
+
+Map toolbar → **Route** (or the Route tab beside the map). Enter From and To (address, place or `lat,lon`). Scavenge
+fetches up to four alternatives and ranks them:
+
+- **Live congestion and closures**: TomTom Routing with live traffic (free key); without a key, OpenStreetMap routing (OSRM)
+  checked against the live traffic incident feed.
+- **Flooding and closures** on a route mark it as blocked; **incidents in the news** (crashes, protests, fires…) within
+  300 m add risk.
+- **Speed cameras** from OpenStreetMap (Overpass) and **speed limits** from TomTom; travel times are never faster than the limits allow.
+- The best route is drawn on the map (cyan), alternatives dashed, with cameras and blockages marked, a written briefing
+  (your LLM when `LLM_BASE_URL` is set) and a Google Maps link that follows the same route.
+
 ## Flights
 
 - **Live aircraft** on the map from community ADS-B networks (adsb.lol → airplanes.live → adsb.fi, all free), loaded
@@ -124,7 +137,7 @@ provider's usage policy for heavy traffic.
 /api/brief?country= · /api/events?layers=quake,nature,news,weather · /api/rules · /api/alerts · /api/watch ·
 /api/sources · /api/satellite?date=YYYY-MM-DD · /api/stream (SSE) · /api/emergency · /api/radio/log ·
 /api/radio/stations?country=&q= · /api/radio/kiwi?lat=&lon=&hz= · /api/sdr/status · /api/sdr/audio · /api/intercom · /api/tx/status ·
-/api/flights?lamin=&lomin=&lamax=&lomax= · /api/traffic/incidents?lamin=&lomin=&lamax=&lomax= · /api/traffic/flow/{style}/{z}/{x}/{y}.png · /api/flights/find?q= · /api/flights/route?callsign= · /api/airports/near?lat=&lon=`
+/api/flights?lamin=&lomin=&lamax=&lomax= · /api/traffic/incidents?lamin=&lomin=&lamax=&lomax= · /api/traffic/flow/{style}/{z}/{x}/{y}.png · POST /api/route {from, to} (operator) · /api/flights/find?q= · /api/flights/route?callsign= · /api/airports/near?lat=&lon=`
 `POST /api/rules {name, terms[], platforms[], country, mood, match, delivery{inapp,browser,sound,webhook,ntfy}} ·
 POST /api/watch {terms[]} · DELETE /api/rules?id= · POST /api/sdr/tune {freqs[], mode, squelch} ·
 POST /api/sdr/stop · POST /api/intercom (JSON text or raw audio) · POST /api/tx (raw audio; X-Freq, X-Operator-Pin)`

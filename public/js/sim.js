@@ -273,7 +273,49 @@
       return { configured: true, simulated: true, incidents: inc.concat(jams), jams, flow, updated: Date.now() };
     }
 
-    return { post, burst, backfill, events, incidents, transmission, flights, atc, traffic };
+    // ---- route planning on the simulated Nairobi network ----
+    const RP = (typeof module === 'object' && module.exports) ? require('./routeplan') : self.ScavengeRoute;
+    const PLACES = { 'jkia': [36.9275, -1.3192, 'JKIA airport'], 'airport': [36.9275, -1.3192, 'JKIA airport'], 'cbd': [36.8219, -1.2864, 'Nairobi CBD'], 'kenyatta avenue': [36.8219, -1.2864, 'Nairobi CBD'],
+      'westlands': [36.8030, -1.2650, 'Westlands'], 'karen': [36.7120, -1.3190, 'Karen'], 'kasarani': [36.8980, -1.2210, 'Kasarani'], 'thika': [37.0693, -1.0333, 'Thika'], 'gigiri': [36.8150, -1.2340, 'Gigiri'],
+      'upper hill': [36.8130, -1.2990, 'Upper Hill'], 'eastleigh': [36.8500, -1.2750, 'Eastleigh'], 'embakasi': [36.8950, -1.3200, 'Embakasi'], 'rongai': [36.7560, -1.3960, 'Rongai'], 'ruiru': [36.9600, -1.1460, 'Ruiru'],
+      'kilimani': [36.7850, -1.2900, 'Kilimani'], 'industrial area': [36.8550, -1.3050, 'Industrial Area'], 'donholm': [36.8900, -1.2960, 'Donholm'], 'roysambu': [36.8780, -1.2190, 'Roysambu'] };
+    const ROAD_INFO = { 'Mombasa Road': [80, 70], 'Thika Road': [80, 75], 'Waiyaki Way': [80, 60], 'Uhuru Highway': [50, 45], 'Ngong Road': [50, 40], 'Jogoo Road': [50, 40], 'Outer Ring Road': [60, 55] };
+    const CAMS = [[36.8665, -1.2430, 80], [36.8500, -1.3190, 80], [36.7800, -1.2590, 80], [36.8165, -1.2775, 50], [36.9100, -1.2065, 80]];
+    function place(q) {
+      q = String(q || '').trim(); const m = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/.exec(q);
+      if (m) return { name: q, lat: +m[1], lon: +m[2] };
+      const k = Object.keys(PLACES).find(k => q.toLowerCase().includes(k) || (q.length > 2 && k.startsWith(q.toLowerCase())));
+      if (!k) throw Object.assign(new Error('The simulator knows Nairobi places: ' + [...new Set(Object.values(PLACES).map(p => p[2]))].join(', ') + ' (or type "lat,lon").'), { code: 404 });
+      return { name: PLACES[k][2], lon: PLACES[k][0], lat: PLACES[k][1] };
+    }
+    function densify(a, b) { const d = RP.dist(a, b), n = Math.max(1, Math.ceil(d / 250)), out = []; for (let i = 1; i <= n; i++) out.push([a[0] + (b[0] - a[0]) * i / n, a[1] + (b[1] - a[1]) * i / n]); return out; }
+    function route(fromQ, toQ) {
+      const A = place(fromQ), B = place(toQ), a = [A.lon, A.lat], b = [B.lon, B.lat];
+      if (RP.dist(a, b) < 300) throw Object.assign(new Error('Start and destination are the same place.'), { code: 400 });
+      const legs = pts => { const line = [pts[0][0]], limits = []; let time = 0; for (const [p, q, kmh, free] of pts.slice(1).map((x, i) => [pts[i][0], x[0], x[1], x[2]])) { const s = line.length - 1; const add = densify(p, q); line.push(...add); limits.push({ from: s, to: line.length - 1, kmh }); time += RP.dist(p, q) / (free / 3.6); } return { line, limits, time }; };
+      const cands = [];
+      // direct through local streets
+      { const mid = [(a[0] + b[0]) / 2 + (b[1] - a[1]) * 0.08, (a[1] + b[1]) / 2 - (b[0] - a[0]) * 0.08]; const r = legs([[a], [mid, 50, 28], [b, 50, 28]]); cands.push(Object.assign(r, { via: 'local streets' })); }
+      for (const [road, L] of Object.entries(ROADS)) {
+        let ia = 0, ib = 0; L.forEach((p, i) => { if (RP.dist(p, a) < RP.dist(L[ia], a)) ia = i; if (RP.dist(p, b) < RP.dist(L[ib], b)) ib = i; });
+        if (ia === ib) continue;
+        const seg = ia < ib ? L.slice(ia, ib + 1) : L.slice(ib, ia + 1).reverse(), [lim, free] = ROAD_INFO[road];
+        const r = legs([[a], [seg[0], 50, 30], ...seg.slice(1).map(p => [p, lim, free]), [b, 50, 30]]);
+        cands.push(Object.assign(r, { via: road }));
+      }
+      const len = r => r.line.reduce((s, p, i) => i ? s + RP.dist(r.line[i - 1], p) : 0, 0);
+      cands.forEach(c => (c.length = len(c)));
+      const direct = cands[0].length;
+      const picked = cands.slice(1).filter(c => c.length < direct * 1.9).sort((x, y) => x.time - y.time).slice(0, 3);
+      const list = (picked.length ? picked : []).concat(picked.length < 3 ? [cands[0]] : []).map((c, i) => ({ id: 'r' + i, line: c.line, length: c.length, time: c.time, noTrafficTime: c.time, trafficIncluded: false, sections: [], limits: c.limits, via: c.via, provider: 'Simulator' }));
+      const tr = traffic();
+      const news = [{ lat: -1.2790, lon: 36.8170, type: 'protest', text: 'Protesters march through central Nairobi over rising living costs', id: 'sim_news_protest' }];
+      const res = RP.analyse(list, { incidents: tr.incidents, cameras: CAMS.map(([lon, lat, maxspeed]) => ({ lat, lon, maxspeed })), news });
+      return { from: A, to: B, provider: 'Simulator (Nairobi road network)', simulated: true, routes: res.routes.map(r => Object.assign(r, { google: RP.googleLink(r) })), best: res.best, summary: res.summary, engine: 'scavenge-route (simulated)',
+        notes: ['Simulated data. On the live site, routes come from TomTom live traffic (or OpenStreetMap) and cameras from OpenStreetMap.'], cameraCount: CAMS.length, updated: Date.now() };
+    }
+
+    return { post, burst, backfill, events, incidents, transmission, flights, atc, traffic, route };
   }
 
   return { create, PLATFORMS: Object.keys(PLATFORMS) };

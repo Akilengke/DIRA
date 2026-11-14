@@ -348,6 +348,26 @@ tr.on td { background: rgba(240,180,60,.12); }
 .tralert:hover { background: var(--ion-soft); }
 .tralert b { font: 600 var(--s-2) var(--f-body); }
 .tralert .d { font: 400 11px/1.4 var(--f-mono); color: var(--dim); margin-top: 3px; overflow-wrap: anywhere; }
+.rt form { display: grid; gap: 8px; }
+.rt label { display: grid; gap: 4px; font: 600 10px var(--f-display); letter-spacing: .16em; text-transform: uppercase; color: var(--dim); }
+.rt input { background: var(--void); border: 1px solid var(--line-2); padding: 8px 9px; font: 400 13px var(--f-body); color: var(--fg); min-width: 0; }
+.rt input:focus { outline: none; border-color: var(--ion); }
+.rt .pair { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; align-items: end; }
+.rt .brief { border-left: 3px solid var(--ion); background: var(--ion-soft); padding: 9px 11px; font-size: var(--s-1); line-height: 1.55; margin: 12px 0 8px; }
+.rt .brief .eng { display: block; margin-top: 6px; font: 500 10px var(--f-mono); color: var(--dim); }
+.rtcard { display: block; width: 100%; text-align: left; color: inherit; background: var(--hull-2); border: 1px solid var(--line-2); padding: 9px 10px; margin-top: 8px; cursor: pointer; }
+.rtcard[aria-pressed="true"] { border-color: var(--ion); box-shadow: inset 3px 0 0 var(--ion); }
+.rtcard.blocked { opacity: .72; }
+.rtcard .top { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.rtcard .lt { font: 700 1rem var(--f-display); letter-spacing: .1em; }
+.rtcard .eta { font: 700 1.25rem var(--f-display); letter-spacing: .04em; }
+.rtcard .km { font: 500 11px var(--f-mono); color: var(--dim); }
+.rtcard .tag { font: 700 9px var(--f-display); letter-spacing: .14em; text-transform: uppercase; padding: 2px 6px; border: 1px solid currentColor; }
+.rtcard .chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.rtcard .chips span { font: 500 10.5px var(--f-mono); padding: 2px 6px; background: var(--void); border: 1px solid var(--line); }
+.rtcard ul { margin: 8px 0 0; padding-left: 16px; font-size: 12px; line-height: 1.5; color: var(--dim); }
+.map .rline { fill: none; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.map .rpin text { font: 700 9px var(--f-display); fill: #021018; text-anchor: middle; dominant-baseline: central; pointer-events: none; }
 /* sos ticker */
 .sos { display: flex; align-items: center; gap: 12px; margin-top: 6px; padding: 7px 12px; border: 1px solid var(--crit); background: rgba(255,90,79,.1); border-left: 4px solid var(--crit); font-size: var(--s-2); min-width: 0; }
 .sos[hidden] { display: none; }
@@ -455,6 +475,7 @@ tr.on td { background: rgba(240,180,60,.12); }
             <button class="tb" data-base="streets" aria-pressed="false" title="Street map"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 14L6 2M14 14L10 2M8 3v2M8 7v2M8 11v2"/></svg><span class="t">Streets</span></button>
             <button class="tb" data-base="sat" aria-pressed="false" title="Satellite imagery"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2 2 2 10 0 12M8 2c-2 2-2 10 0 12"/></svg><span class="t">Satellite</span></button>
           </span>
+          <button class="tb" id="tbRoute" title="Plan the fastest route"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="3.5" cy="12.5" r="1.8"/><circle cx="12.5" cy="3.5" r="1.8"/><path d="M5 11.5c3-1 1-5 4-6.5l1.8-.9"/></svg><span class="t">Route</span></button>
           <button class="tb" id="tbFull" aria-pressed="false" title="Full screen"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg><span class="t">Full screen</span></button>
           <button class="tb" id="tbSize" title="Change map height"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 1v14M5 4l3-3 3 3M5 12l3 3 3-3"/></svg><span class="t" id="tbSizeT">Size M</span></button>
           <button class="tb" id="tbPin" aria-pressed="true" title="Keep the map docked at the top while you scroll"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M6 2h4l-1 5 3 2H4l3-2zM8 9v6"/></svg><span class="t">Pinned</span></button>
@@ -475,10 +496,12 @@ tr.on td { background: rgba(240,180,60,.12); }
           <button role="tab" data-p="inspect" aria-selected="true">Inspect</button>
           <button role="tab" data-p="posts" aria-selected="false">Posts</button>
           <button role="tab" data-p="events" aria-selected="false">Events</button>
+          <button role="tab" data-p="route" aria-selected="false">Route</button>
         </div>
         <div class="spane detail" id="p-inspect"></div>
         <div class="spane" id="p-posts" hidden></div>
         <div class="spane" id="p-events" hidden></div>
+        <div class="spane" id="p-route" hidden></div>
       </aside>
     </section>
 
@@ -751,6 +774,7 @@ SCAVENGE_DEMO=1 node server/index.js   # offline simulator</div>
   <symbol id="ic-storm" viewBox="0 0 24 24"><path d="M13.5 1.5L4 14h6.5l-1.5 8.5L19 10h-6.5z"/></symbol>
   <symbol id="ic-protest" viewBox="0 0 24 24"><path d="M3 9.5v5h3l7.5 4.5v-14L6 9.5zm12.5-1v7a4 4 0 0 0 0-7zm0-4.5v2.2a7 7 0 0 1 0 11.6V20a9 9 0 0 0 0-16z"/></symbol>
   <symbol id="ic-outbreak" viewBox="0 0 24 24"><path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z"/></symbol>
+  <symbol id="ic-camera" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M3 7h3l1.6-2.4h8.8L18 7h3a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1zm9 2.5a4.3 4.3 0 1 0 0 8.6a4.3 4.3 0 1 0 0-8.6zm0 2.2a2.1 2.1 0 1 1 0 4.2a2.1 2.1 0 1 1 0-4.2z"/></symbol>
   <symbol id="ic-roadworks" viewBox="0 0 24 24"><path d="M10.2 3h3.6l1.2 4.5H9zM8.6 9h6.8l1.1 4H7.5zM7.1 14.5h9.8L18 19h2v2H4v-2h2z"/></symbol>
   <symbol id="ic-closed" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20zM5 10.5h14v3H5z"/></symbol>
   <symbol id="ic-jam" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M8 1h8a2 2 0 0 1 2 2v18a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2zm4 2.5a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4zm0 6.3a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4zm0 6.3a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4z"/></symbol>
@@ -762,6 +786,7 @@ SCAVENGE_DEMO=1 node server/index.js   # offline simulator</div>
 <script src="https://cdn.jsdelivr.net/npm/d3@7.8.5/dist/d3.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
 <script src="js/core.js"></script>
+<script src="js/routeplan.js"></script>
 <script src="js/sim.js"></script>
 <script src="js/radio.js"></script>
 <script src="js/conflicts.js"></script>
@@ -865,6 +890,7 @@ const API = {
     this.flightRoute = (cs, lat, lon) => g(`api/flights/route?callsign=${encodeURIComponent(cs)}&lat=${lat}&lon=${lon}`);
     this.airports = (lat, lon) => g(`api/airports/near?lat=${lat}&lon=${lon}&n=6`);
     this.conflicts = () => g('api/conflicts');
+    this.route = (from, to) => send('api/route', 'POST', { from, to });
     this.traffic = b => g('api/traffic/incidents?' + new URLSearchParams(Object.fromEntries(Object.entries(b).map(([k, v]) => [k, v.toFixed(4)]))));
     this.radar = () => g('api/weather/radar');
     this.authStatus = () => g('api/auth/status');
@@ -920,6 +946,7 @@ const API = {
     this.saveRule = async r => { r.id = r.id || 'r' + Date.now().toString(36); const i = S.rules.findIndex(o => o.id === r.id); if (i >= 0) S.rules[i] = Object.assign(S.rules[i], r); else S.rules.push(Object.assign({ hits: 0 }, r)); saveRules(); };
     this.deleteRule = async id => { S.rules = S.rules.filter(r => r.id !== id); saveRules(); };
     this.setWatch = async terms => { S.watch = terms; store.set('watch', terms); };
+    this.route = async (from, to) => sim.route(from, to);
     this.brief = async (c, t) => ({ engine: 'scavenge-stat (in-browser)', text: C.brief(S.posts, { country: c, topic: t, windowMin: S.an.win }) });
     this.sources = async () => null;
     this.server = false; this.simLocal = true;
@@ -1099,7 +1126,7 @@ const altColor = a => a == null ? '#9aa8b8' : a <= 0 ? '#8a94a3' : d3.interpolat
 // ============================================================ MAP
 const MapView = window.MapView = (() => {
   const W = 1000, WORLD = 1000; let H = 500;   // viewBox follows the container's shape; the Mercator world is a 1000×1000 square
-  let gTrafTiles, gTraf, gRadar, gConf, gInc, radar = null, svg, g, gTiles, proj, path, zoom, k = 1, tz = 0, gEmg, gFl, gTrail, countries = [], gCountries, gPosts, gQuake, gNature, gNews, gWx, gNight, gPing, gTV, img, gClouds, ready = false, tileErrs = 0, moveCb = null, moveT = null;
+  let gRoute, gTrafTiles, gTraf, gRadar, gConf, gInc, radar = null, svg, g, gTiles, proj, path, zoom, k = 1, tz = 0, gEmg, gFl, gTrail, countries = [], gCountries, gPosts, gQuake, gNature, gNews, gWx, gNight, gPing, gTV, img, gClouds, ready = false, tileErrs = 0, moveCb = null, moveT = null;
   const tip = $('#tip');
   const mk = () => Math.min(Math.sqrt(k), 4) / k; // marker scale: grows a little with zoom, then stays a fixed screen size
   function decode(geo) {
@@ -1135,7 +1162,7 @@ const MapView = window.MapView = (() => {
     img = g.append('image').attr('x', 0).attr('y', 0).attr('width', WORLD).attr('height', WORLD).attr('preserveAspectRatio', 'none').style('display', 'none');
     g.append('path').datum(d3.geoGraticule10()).attr('class', 'grat').attr('d', path);
     gCountries = g.append('g');
-    gRadar = g.append('g').attr('class', 'radar').attr('opacity', 0.72); gTrafTiles = g.append('g').attr('class', 'traffic'); gTraf = g.append('g'); gConf = g.append('g');
+    gRadar = g.append('g').attr('class', 'radar').attr('opacity', 0.72); gTrafTiles = g.append('g').attr('class', 'traffic'); gTraf = g.append('g'); gConf = g.append('g'); gRoute = g.append('g').attr('class', 'route');
     gClouds = g.append('g').style('display', 'none');
     gNight = g.append('path').attr('class', 'night');
     gWx = g.append('g').attr('class', 'wx'); gTV = g.append('g').attr('class', 'tvp');
@@ -1358,6 +1385,39 @@ const MapView = window.MapView = (() => {
     cg.select('rect').each(function (j) { const g = this.parentNode, w = Math.max(g.querySelector('text.h').getComputedTextLength(), g.querySelector('text.b').getComputedTextLength()) + 10; d3.select(this).attr('x', 1).attr('y', -21).attr('width', w).attr('height', 24); });
   }
 
+  // ---- planned route: alternatives dashed, chosen route bold, start/end pins, speed cameras, blockages
+  function drawRoute() {
+    const R = window.Route ? Route.current() : null, s = mk();
+    const routes = R ? R.plan.routes.slice().sort((a, b) => (a.id === R.sel) - (b.id === R.sel)) : [];
+    const lines = gRoute.selectAll('g.rl').data(routes, r => r.id).join(en => { const e = en.append('g').attr('class', 'rl'); e.append('path').attr('class', 'rline case'); e.append('path').attr('class', 'rline main'); return e; });
+    lines.order();
+    lines.select('path.case').attr('d', r => path({ type: 'LineString', coordinates: r.line })).attr('stroke', '#03101a').attr('stroke-width', r => r.id === R.sel ? 9 : 0).attr('stroke-opacity', 0.75);
+    lines.select('path.main').attr('d', r => path({ type: 'LineString', coordinates: r.line }))
+      .attr('stroke', r => r.id === R.sel ? (r.blocked ? '#ff5a4f' : '#2fe0ff') : r.blocked ? '#ff5a4f' : '#9fb3c8')
+      .attr('stroke-width', r => r.id === R.sel ? 5 : 3).attr('stroke-dasharray', r => r.id === R.sel ? null : '6 5').attr('stroke-opacity', r => r.id === R.sel ? 1 : 0.7)
+      .style('cursor', 'pointer').on('click', (e, r) => { e.stopPropagation(); Route.pick(r.id); })
+      .on('mousemove', (e, r) => showTip(e, `<b>Route ${r.label}${r.rank === 1 ? ' · best' : ''}</b><br>${ScavengeRoute.fmt(r.eta)} · ${(r.length / 1000).toFixed(1)} km${r.blocked ? '<br><span style="color:#ff5a4f">Blocked: ' + esc(r.closures.map(c => c.label).join(', ')) + '</span>' : ''}`)).on('mouseleave', hideTip);
+    const sel = routes.find(r => r.id === (R && R.sel));
+    const pins = R ? [{ k: 'A', p: [R.plan.from.lon, R.plan.from.lat], c: '#2fe0ff' }, { k: 'B', p: [R.plan.to.lon, R.plan.to.lat], c: '#f0b43c' }] : [];
+    const pg = gRoute.selectAll('g.rpin').data(pins, d => d.k).join(en => { const e = en.append('g').attr('class', 'rpin pt'); e.append('circle'); e.append('text'); return e; });
+    pg.attr('transform', d => `translate(${proj(d.p)}) scale(${s * 0.5})`); pg.select('circle').attr('r', 9).attr('fill', d => d.c).attr('stroke', '#021018').attr('stroke-width', 2); pg.select('text').text(d => d.k === 'A' ? 'S' : 'D');
+    const marks = sel ? sel.cameras.map((c, i) => ({ id: 'c' + i, t: 'camera', lon: c.lon, lat: c.lat, tip: `<b>Speed camera</b>${c.maxspeed ? '<br>Limit ' + c.maxspeed + ' km/h' : ''}<br>${c.km.toFixed(1)} km into the route` }))
+      .concat(sel.closures.map((c, i) => ({ id: 'x' + i, t: c.label === 'Flooded road' ? 'flood' : 'closed', lon: c.at[0], lat: c.at[1], tip: `<b>${esc(c.label)}</b>${c.road ? ' · ' + esc(c.road) : ''}${c.detail ? '<br>' + esc(c.detail) : ''}` }))) : [];
+    const mg = gRoute.selectAll('g.rmk').data(marks, d => d.id + d.t).join(en => { const e = en.append('g').attr('class', 'rmk pt'); e.append('rect'); e.append('use'); return e; });
+    mg.attr('transform', d => `translate(${proj([d.lon, d.lat])}) scale(${s * 0.5})`).on('mousemove', (e, d) => showTip(e, d.tip)).on('mouseleave', hideTip);
+    mg.select('rect').attr('x', -7).attr('y', -7).attr('width', 14).attr('height', 14).attr('rx', 2).attr('fill', d => d.t === 'camera' ? '#14202a' : '#2a0f0d').attr('stroke', d => d.t === 'camera' ? '#e8f1ff' : '#ff5a4f').attr('stroke-width', 1.1);
+    mg.select('use').attr('href', d => '#ic-' + d.t).attr('x', -5).attr('y', -5).attr('width', 10).attr('height', 10).attr('fill', d => d.t === 'camera' ? '#e8f1ff' : '#ff5a4f');
+  }
+  function fit(pts) {
+    const xy = pts.map(p => proj(p)), x0 = d3.min(xy, p => p[0]), x1 = d3.max(xy, p => p[0]), y0 = d3.min(xy, p => p[1]), y1 = d3.max(xy, p => p[1]);
+    // fit into the part of the map not covered by the toolbar and the layers panel
+    const mr = svg.node().getBoundingClientRect(), sx = W / mr.width, lay = document.getElementById('layers'), lr = lay && lay.offsetParent ? lay.getBoundingClientRect() : null;
+    const L = 48 * sx, T = 112 * sx, Rt = (lr && lr.width < mr.width * 0.6 ? (mr.right - lr.left + 16) : 24) * sx, B = 50 * sx;
+    const bw = Math.max(80, W - L - Rt), bh = Math.max(80, H - T - B);
+    const sc = Math.min(1 << 16, 0.92 * Math.min(bw / Math.max(1e-6, x1 - x0), bh / Math.max(1e-6, y1 - y0)));
+    svg.transition().duration(800).call(zoom.transform, d3.zoomIdentity.translate(L + bw / 2 - (x0 + x1) / 2 * sc, T + bh / 2 - (y0 + y1) / 2 * sc).scale(sc));
+  }
+
   // ---- conflict zones (reference areas, intensity from news) and incident icons
   function drawConflict() {
     const zones = S.layers.conflict ? Conflict.zones() : [];
@@ -1387,7 +1447,7 @@ const MapView = window.MapView = (() => {
   // ---- flights (redrawn every second with dead reckoning between position reports)
   function drawFlights() {
     if (!ready) return;
-    drawConflict(); drawIncidents(); drawTraffic();
+    drawConflict(); drawIncidents(); drawTraffic(); drawRoute();
     const list = S.layers.flights ? Flights.visible() : [];
     const s = mk() * 0.42, sel = Flights.selected(), labels = Flights.labels() || k >= 40;
     const fg = gFl.selectAll('g').data(list, d => d.hex).join(enter => { const e = enter.append('g').attr('class', 'pt plane'); e.append('path').attr('d', PLANE); e.append('text'); return e; });
@@ -1413,7 +1473,7 @@ const MapView = window.MapView = (() => {
   }
   function center() { const t = d3.zoomTransform(svg.node()); const ll = proj.invert(t.invert([W / 2, H / 2])); return { lon: ll[0], lat: ll[1] }; }
   function bbox() { const t = d3.zoomTransform(svg.node()); const a = proj.invert(t.invert([0, 0])), b = proj.invert(t.invert([W, H])); return { lomin: Math.max(-180, a[0]), lamax: Math.min(85, a[1]), lomax: Math.min(180, b[0]), lamin: Math.max(-85, b[1]) }; }
-  return { init, render, focus, panTo, ping, center, bbox, drawFlights, setBase, setRadar, drawTrafficTiles: () => drawTrafficTiles(d3.zoomTransform(svg.node())), drawRadar: () => drawRadar(d3.zoomTransform(svg.node())), zoomLevel: () => tz, onMove: f => (moveCb = f) };
+  return { init, render, focus, panTo, ping, center, bbox, fit, drawRoute: () => drawRoute(), drawFlights, setBase, setRadar, drawTrafficTiles: () => drawTrafficTiles(d3.zoomTransform(svg.node())), drawRadar: () => drawRadar(d3.zoomTransform(svg.node())), zoomLevel: () => tz, onMove: f => (moveCb = f) };
 })();
 
 // ============================================================ map toolbar: satellite · fullscreen · size · pin
@@ -1449,7 +1509,7 @@ function placeSide() { const side = $('#side'); if (narrow.matches) { $('#sideSl
 narrow.addEventListener('change', placeSide);
 
 // ============================================================ side panel: inspect · posts · events
-function sideTab(t) { S.sideTab = t; $$('.stabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.p === t)); ['inspect', 'posts', 'events'].forEach(p => ($('#p-' + p).hidden = p !== t)); if (t === 'posts') renderSidePosts(); if (t === 'events') renderEvents(); }
+function sideTab(t) { S.sideTab = t; $$('.stabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.p === t)); ['inspect', 'posts', 'events', 'route'].forEach(p => ($('#p-' + p).hidden = p !== t)); if (t === 'posts') renderSidePosts(); if (t === 'events') renderEvents(); if (t === 'route') Route.render(); }
 $('.stabs').onclick = e => { const b = e.target.closest('button'); if (b) sideTab(b.dataset.p); };
 window.select = s => select(s);
 function select(s) { S.sel = s; sideTab('inspect'); renderDetail(); MapView.render(); if (narrow.matches) { const side = $('#side'); side.style.scrollMarginTop = (S.pinned ? $('#dock').offsetHeight + 8 : 8) + 'px'; side.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }
@@ -2456,6 +2516,76 @@ const Traffic = window.Traffic = (() => {
   return { refresh, data: () => data, tilesOn: () => !!API.traffic && configured !== false && !tooFar(), alerts: () => alerts };
 })();
 
+// ============================================================ ROUTE PLANNER
+const Route = window.Route = (() => {
+  let plan = null, sel = null, busy = false, err = '', open = {};
+  const F = ScavengeRoute.fmt;
+  const last = store.get('route', { from: '', to: '' });
+  function chips(r) {
+    const c = [];
+    if (r.delay > 60) c.push(`<span style="color:${r.delay > 900 ? 'var(--crit)' : 'var(--plasma)'}">+${F(r.delay)} traffic</span>`);
+    r.closures.forEach(x => c.push(`<span style="color:var(--crit)">${esc(x.label)}${x.road ? ' · ' + esc(x.road) : ''}</span>`));
+    if (r.cameras.length) c.push(`<span>${r.cameras.length} speed camera${r.cameras.length > 1 ? 's' : ''}</span>`);
+    if (r.limitAvg) c.push(`<span>Limit avg ${r.limitAvg}${r.limitMax > r.limitAvg ? ' · max ' + r.limitMax : ''} km/h</span>`);
+    if (r.news.length) c.push(`<span style="color:var(--plasma)">${r.news.length} incident${r.news.length > 1 ? 's' : ''} in news</span>`);
+    if (r.via) c.push(`<span>via ${esc(r.via)}</span>`);
+    return c.join('');
+  }
+  function detail(r) {
+    const li = [];
+    r.jams.filter(j => j.delay > 30).slice(0, 5).forEach(j => li.push(`${esc(j.label)}: +${F(j.delay)}`));
+    r.slow.slice(0, 4).forEach(x => li.push(`${esc(x.label)}${x.road ? ' on ' + esc(x.road) : ''}`));
+    r.closures.forEach(x => li.push(`<b style="color:var(--crit)">${esc(x.label)}</b>${x.detail ? ': ' + esc(x.detail) : ''}`));
+    r.cameras.forEach(c => li.push(`Speed camera at ${c.km.toFixed(1)} km${c.maxspeed ? ' · limit ' + c.maxspeed + ' km/h' : ''}`));
+    r.news.slice(0, 3).forEach(n => li.push(`News: ${esc(n.label)}, ${esc(n.detail)}`));
+    r.notes.forEach(n => li.push(esc(n)));
+    return li.length ? `<ul>${li.map(x => `<li>${x}</li>`).join('')}</ul>` : '<ul><li>Clear run: no congestion, closures or cameras reported.</li></ul>';
+  }
+  function render() {
+    const el = $('#p-route'); if (!el) return;
+    const st = Auth.state(), gated = API.server && !st.signedIn;
+    const fv = ($('#rtFrom') || {}).value ?? last.from, tv = ($('#rtTo') || {}).value ?? last.to;
+    let out = '';
+    if (gated) out = `<div class="warnbox" style="margin-top:12px"><b>Operators only</b><br>Route planning uses the operator's traffic key. <button class="btn sm" id="rtSignin">${st.setup ? 'Sign in' : 'Set up sign-in'}</button></div>`;
+    else if (busy) out = '<p class="note" style="margin-top:12px">Analysing routes: live traffic, closures, flooding, speed cameras and limits…</p>';
+    else if (err) out = `<p class="error" style="margin-top:12px">${esc(err)}</p>`;
+    else if (plan) {
+      out = `<div class="brief">${esc(plan.summary)}<span class="eng">${esc(plan.provider)} · analysis: ${esc(plan.engine)}</span></div>`
+        + plan.notes.map(n => `<p class="note" style="margin:4px 0">${esc(n)}</p>`).join('')
+        + plan.routes.map(r => `<button class="rtcard${r.blocked ? ' blocked' : ''}" data-rid="${r.id}" aria-pressed="${r.id === sel}">
+            <div class="top"><span class="lt">${r.label}</span><span class="eta" style="color:${r.blocked ? 'var(--crit)' : r.rank === 1 ? 'var(--ion)' : 'var(--fg)'}">${F(r.eta)}</span><span class="km">${(r.length / 1000).toFixed(1)} km</span>
+            ${r.rank === 1 && !r.blocked ? '<span class="tag" style="color:var(--ion)">Best route</span>' : r.blocked ? '<span class="tag" style="color:var(--crit)">Blocked</span>' : ''}</div>
+            <div class="chips">${chips(r)}</div>${r.id === sel ? detail(r) : ''}</button>`).join('')
+        + (cur() ? `<div class="row" style="margin-top:10px"><a class="btn sm primary" href="${cur().google}" target="_blank" rel="noopener">Open route ${cur().label} in Google Maps ↗</a><button class="btn sm" id="rtFit">Fit on map</button><button class="btn sm" id="rtClear">Clear</button></div>` : '');
+    }
+    el.innerHTML = `<div class="rt"><header class="row" style="justify-content:space-between"><h2 style="margin:0;font:700 .95rem var(--f-display);letter-spacing:.16em;text-transform:uppercase">Fastest route</h2>${plan && plan.simulated ? '<span class="chipst" style="color:var(--plasma)">SIM</span>' : ''}</header>
+      <p class="note" style="margin:6px 0 10px">Compares every alternative on live congestion, road closures and flooding, speed cameras, speed limits and incidents in the news, then shows the best one on the map.</p>
+      <form id="rtForm"><label>From<input id="rtFrom" value="${esc(fv)}" placeholder="${API.server ? 'Address, place or lat,lon' : 'e.g. JKIA'}" autocomplete="off" required></label>
+        <div class="pair"><label>To<input id="rtTo" value="${esc(tv)}" placeholder="${API.server ? 'Address, place or lat,lon' : 'e.g. Westlands'}" autocomplete="off" required></label><button type="button" class="btn sm" id="rtSwap" title="Swap start and destination" style="height:35px">⇅</button></div>
+        <button class="btn primary" ${gated || busy ? 'disabled' : ''}>${busy ? 'Analysing…' : 'Find fastest route'}</button></form>${out}</div>`;
+    $('#rtForm').onsubmit = e => { e.preventDefault(); run($('#rtFrom').value, $('#rtTo').value); };
+    $('#rtSwap').onclick = () => { const a = $('#rtFrom').value; $('#rtFrom').value = $('#rtTo').value; $('#rtTo').value = a; };
+    if ($('#rtSignin')) $('#rtSignin').onclick = () => Auth.open();
+    if ($('#rtFit')) $('#rtFit').onclick = fitNow;
+    if ($('#rtClear')) $('#rtClear').onclick = () => { plan = null; sel = null; render(); MapView.drawRoute(); };
+    el.querySelectorAll('[data-rid]').forEach(b => (b.onclick = () => pick(b.dataset.rid)));
+  }
+  const cur = () => plan && plan.routes.find(r => r.id === sel);
+  function fitNow() { if (!plan) return; MapView.fit(plan.routes.flatMap(r => [r.line[0], r.line[Math.floor(r.line.length / 2)], r.line[r.line.length - 1]]).concat(cur() ? cur().line.filter((_, i) => i % 10 === 0) : [])); }
+  async function run(from, to) {
+    if (busy) return; busy = true; err = ''; store.set('route', { from, to }); render();
+    try {
+      plan = await API.route(from, to); sel = plan.best;
+      if (!S.layers.traffic) { S.layers.traffic = true; store.set('layers', S.layers); }
+      MapView.drawRoute(); fitNow(); setTimeout(() => Traffic.refresh(true), 900);
+    } catch (e) { err = e.message; plan = null; }
+    busy = false; render(); MapView.drawRoute();
+  }
+  function pick(id) { sel = id; render(); MapView.drawRoute(); }
+  $('#tbRoute').onclick = () => { sideTab('route'); setTimeout(() => $('#rtFrom') && $('#rtFrom').focus(), 50); if (narrow.matches) $('#side').scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+  return { render, run, pick, current: () => plan ? { plan, sel } : null };
+})();
+
 // ============================================================ OPERATOR SIGN-IN
 const Auth = (() => {
   let st = { setup: true, signedIn: false, sim: false };
@@ -2486,7 +2616,7 @@ const Auth = (() => {
     try {
       if (!st.setup) { if ($('#authPw').value !== $('#authPw2').value) throw new Error('The passwords do not match.'); await API.authSetup($('#authCode').value, $('#authPw').value); }
       else await API.authLogin($('#authPw').value);
-      await refresh(); close(); Accounts.render();
+      await refresh(); close(); Accounts.render(); Route.render();
       toast({ rule: 'Signed in', post: { platform: 'x', text: 'Operator access granted on this browser for 30 days.' }, hits: [] });
     } catch (x) { err.textContent = x.message; err.hidden = false; }
   };
