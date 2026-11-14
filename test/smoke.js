@@ -1,0 +1,38 @@
+// Boots the server in demo mode on a spare port and checks every API route.
+'use strict';
+const { spawn } = require('child_process');
+const path = require('path');
+const os = require('os');
+const PORT = 18000 + Math.floor(Math.random() * 1000);
+const srv = spawn(process.execPath, [path.join(__dirname, '../server/index.js')], { env: Object.assign({}, process.env, { PORT, SCAVENGE_DEMO: '1', SCAVENGE_DATA: path.join(os.tmpdir(), 'scavenge-test-' + PORT) }), stdio: 'inherit' });
+const base = `http://localhost:${PORT}`;
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const ok = (c, m) => { if (!c) { console.error('✗ ' + m); srv.kill(); process.exit(1); } console.log('✓ ' + m); };
+(async () => {
+  await wait(1500);
+  const j = async (u, o) => (await fetch(base + u, o)).json();
+  ok((await j('/api/health')).ok, 'health');
+  ok((await j('/api/feed?limit=10')).length === 10, 'feed');
+  ok((await j('/api/trends')).length > 0, 'trends');
+  ok((await j('/api/analytics')).total > 0, 'analytics');
+  ok(typeof (await j('/api/brief')).text === 'string', 'brief');
+  ok(Array.isArray((await j('/api/events')).quake), 'events');
+  const r = await j('/api/rules', { method: 'POST', body: JSON.stringify({ name: 'test', terms: ['rain'] }) });
+  ok(r.id, 'create rule');
+  ok((await j('/api/rules?id=' + r.id, { method: 'DELETE' })).ok, 'delete rule');
+  ok((await j('/api/emergency')).length > 0, 'emergency board');
+  await wait(2500);
+  const rl = await j('/api/radio/log'); ok(rl.length > 0 && rl[0].text, 'radio log');
+  ok((await j('/api/radio/channels')).length > 10, 'radio channels');
+  const ic = await j('/api/intercom', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: 'Test', text: 'Radio check' }) });
+  ok(ic.id && (await j('/api/intercom'))[0].text === 'Radio check', 'intercom text');
+  const icv = await j('/api/intercom', { method: 'POST', headers: { 'Content-Type': 'audio/webm', 'X-From': 'Test' }, body: Buffer.alloc(3000, 7) });
+  ok(icv.audio && (await fetch(base + '/' + icv.audio)).ok, 'intercom voice');
+  const ts = await j('/api/tx/status'); ok(ts.ready === false && /switched off/.test(ts.reason), 'transmit off by default');
+  const tr = await fetch(base + '/api/tx', { method: 'POST', headers: { 'X-Freq': '145500000' }, body: Buffer.alloc(3000) });
+  ok(tr.status === 403, 'transmit refused when disabled');
+  ok(typeof (await j('/api/sdr/status')).available === 'boolean', 'sdr status');
+  const page = await (await fetch(base + '/')).text();
+  ok(page.includes('SCAVENGE'), 'frontend served');
+  srv.kill(); console.log('All checks passed.');
+})().catch(e => { console.error(e); srv.kill(); process.exit(1); });

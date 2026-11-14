@@ -1,0 +1,88 @@
+# SCAVENGE — Global Signal Intelligence
+
+Monitor social media and the planet from one sci-fi command deck: live multi-platform feeds, keyword and
+hashtag alerts, AI trend and sentiment analysis by country and city, and a world map of earthquakes,
+wildfires, storms, volcanoes, news hotspots, weather, day/night and NASA satellite imagery.
+
+**Zero dependencies.** Pure Node.js 18+ (built-in `fetch`, HTTP server, Server-Sent Events). No `npm install` needed.
+
+```bash
+cp .env.example .env          # optional: add API keys
+node server/index.js          # → http://localhost:8080  (live feeds)
+SCAVENGE_DEMO=1 node server/index.js   # offline simulator
+npm test                      # API smoke test
+docker build -t scavenge . && docker run -p 8080:8080 -v scavenge:/data scavenge
+```
+
+## What's inside
+
+```
+server/
+  index.js              HTTP API, SSE live stream (/api/stream), static host, satellite proxy
+  connectors/social.js  X, Facebook/Instagram, LinkedIn, Reddit, Mastodon, Bluesky, Hacker News, YouTube, GDELT news
+  connectors/earth.js   USGS quakes, NASA EONET events, GDELT GEO hotspots, Open-Meteo weather, NASA GIBS imagery
+  engine/scheduler.js   polls every source, enriches posts, pushes to clients
+  engine/alerts.js      rule matching + delivery (in-app, desktop, webhook, ntfy.sh phone push)
+  engine/ai.js          AI briefing via any OpenAI-compatible LLM (e.g. free local Ollama), statistical fallback
+  engine/store.js       ring buffer + JSON persistence in ./data
+  engine/sdr.js         RTL-SDR receiver: streaming, scanning, clips, transcription, distress detection
+  engine/tx.js          ops intercom + licensed on-air transmit (rigctld PTT, band checks, logging)
+  connectors/emergency.js  aircraft emergency squawks, GDACS, NWS
+  connectors/radio.js   broadcast station directory, public KiwiSDR receivers
+public/
+  index.html            the whole UI (pinned map · Overview · Live feeds · Alerts · Radio & SOS · Analytics · Live TV · Sources)
+  js/core.js            shared analysis engine: sentiment, geo-tagging, trend velocity, rule matching, briefing
+  js/sim.js             simulator for the demo/test site
+  js/radio.js           distress channels, transmit band rules, emergency numbers
+```
+
+## Data sources
+
+| Source | Cost | Setup |
+|---|---|---|
+| Reddit, Mastodon, Hacker News, GDELT news (65+ languages) | Free | none |
+| USGS earthquakes, NASA EONET, GDELT GEO, Open-Meteo, NASA GIBS | Free | none |
+| Bluesky | Free | `BSKY_HANDLE`, `BSKY_APP_PASSWORD` |
+| YouTube | Free quota | `YOUTUBE_API_KEY` |
+| X (Twitter) | Paid API plan with search | `X_BEARER_TOKEN` |
+| Facebook / Instagram | Meta Graph API, public pages only | `FB_ACCESS_TOKEN`, `FB_PAGE_IDS` |
+| LinkedIn | Community Management API, organisation pages only | `LINKEDIN_TOKEN`, `LINKEDIN_ORG_URNS` |
+
+X, Meta and LinkedIn no longer offer free public search. Scavenge includes working adapters that switch on
+as soon as you add credentials; until then the Sources page shows them as "Needs keys".
+Respect each platform's terms of service and local privacy law when monitoring.
+
+## Radio & SOS
+
+- **Emergency board**: aircraft squawking 7700 / 7600 / 7500 (adsb.lol), GDACS orange/red disaster alerts,
+  US NWS extreme/severe warnings, and MAYDAY / PAN-PAN / SOS calls found in radio traffic or social posts.
+  All of it is shown on the map, fed into alert rules (topic "Emergencies & distress"), and summarised in a ticker.
+- **Distress watch**: presets for VHF 16, 121.5 MHz, 243 MHz, 2182 kHz, the GMDSS HF voice channels, SAR 5680 kHz,
+  IARU emergency nets, 2 m calling channels and NOAA weather radio.
+- **Listening**: a local RTL-SDR receiver (`rtl_fm`) streamed to the browser, with scanning, per-call clips,
+  optional Whisper transcription and automatic distress detection; the nearest public KiwiSDR receivers, opened
+  already tuned; links to LiveATC, Broadcastify, OpenMHz and WebSDR; and 40,000+ broadcast stations (radio-browser.info).
+- **Talk back**: an ops intercom (push-to-talk voice and text between operators) and, for licensed operators,
+  on-air transmit through your own transceiver via Hamlib `rigctld`. Transmit is off by default and needs a call sign
+  and PIN. It is limited to your licensed bands, never transmits on aviation or beacon frequencies, always releases PTT, and every over is logged.
+  Never send a false distress call. Listening to police and emergency-service radio is restricted in some countries.
+
+## How the analysis works
+
+- **Sentiment**: lexicon scoring with negation handling, normalised to −1…+1 per post.
+- **Geo-tagging**: native coordinates when a platform provides them, otherwise place names in the text
+  (100+ cities, every country they belong to, demonyms), then post language as a weak fallback.
+- **Trends**: hashtags, terms and two-word phrases ranked by volume × velocity (current window vs. previous),
+  with a bonus for spreading across platforms. Filterable by country or city.
+- **AI briefing**: set `LLM_BASE_URL` (Ollama is free and local) for an LLM-written situation report; otherwise
+  a statistical briefing is generated.
+
+## API
+
+`GET /api/health · /api/feed?platform=&country=&city=&q=&limit= · /api/trends?window=&country= · /api/analytics ·
+/api/brief?country= · /api/events?layers=quake,nature,news,weather · /api/rules · /api/alerts · /api/watch ·
+/api/sources · /api/satellite?date=YYYY-MM-DD · /api/stream (SSE) · /api/emergency · /api/radio/log ·
+/api/radio/stations?country=&q= · /api/radio/kiwi?lat=&lon=&hz= · /api/sdr/status · /api/sdr/audio · /api/intercom · /api/tx/status`
+`POST /api/rules {name, terms[], platforms[], country, mood, match, delivery{inapp,browser,sound,webhook,ntfy}} ·
+POST /api/watch {terms[]} · DELETE /api/rules?id= · POST /api/sdr/tune {freqs[], mode, squelch} ·
+POST /api/sdr/stop · POST /api/intercom (JSON text or raw audio) · POST /api/tx (raw audio; X-Freq, X-Operator-Pin)`

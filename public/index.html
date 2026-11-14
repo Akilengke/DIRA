@@ -1,0 +1,1898 @@
+<meta charset="utf-8">
+<title>Scavenge</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout concept: an orbital command deck. The world map is a permanently docked viewport at the top
+   (sticky, resizable, fullscreen-able); every section scrolls beneath it. One committed dark look (night ops). */
+:root {
+  color-scheme: dark;
+  --void: #03060c; --hull: #08101b; --hull-2: #0c1726; --line: #18293e; --line-2: #24405f;
+  --fg: #d6e4f3; --dim: #7a8ea7; --ion: #4ee3ff; --ion-soft: rgba(78, 227, 255, .14);
+  --plasma: #ffa94d; --crit: #ff4f6d; --ok: #3ff2a4;
+  --land: #0f1d2e; --land-line: #22405e; --night: rgba(0, 3, 10, .42);
+  --f-display: "Chakra Petch", "Rajdhani", "Segoe UI", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --s-1: .75rem; --s-2: .8125rem; --s-3: .9375rem; --s-4: 1.125rem; --s-5: 1.5rem;
+  --mapH: 48vh;
+}
+* { box-sizing: border-box; }
+html, body { background: var(--void); color: var(--fg); }
+body {
+  font: 400 var(--s-3)/1.5 var(--f-body); margin: 0; min-height: 100%;
+  background: radial-gradient(1200px 600px at 70% -10%, rgba(78,227,255,.07), transparent 60%), var(--void);
+}
+body::after { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 95; background: repeating-linear-gradient(to bottom, rgba(255,255,255,.016) 0 1px, transparent 1px 3px); }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 40; background: var(--void); }
+button, input, select { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--ion); outline-offset: 2px; }
+a { color: var(--ion); }
+.mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
+.label { font: 500 var(--s-1)/1.2 var(--f-display); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
+mark { background: rgba(255,169,77,.22); color: var(--plasma); padding: 0 2px; }
+
+.wrap { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); max-width: 1720px; margin: 0 auto; }
+
+/* ---------- dock (header + map + tabs) ---------- */
+.dock { background: var(--void); z-index: 30; border-bottom: 1px solid var(--line); }
+.dock.pinned { position: sticky; top: env(safe-area-inset-top, 0px); box-shadow: 0 12px 30px rgba(0,0,0,.55); }
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding-block: 10px; }
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand svg { width: 34px; height: 34px; flex: none; }
+.brand h1 { margin: 0; font: 700 1.3rem/1 var(--f-display); letter-spacing: .32em; }
+.brand small { display: block; font: 500 .58rem/1.4 var(--f-display); letter-spacing: .28em; color: var(--ion); text-transform: uppercase; margin-top: 3px; }
+.sweep { transform-origin: 19px 19px; animation: spin 4s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.mode { font: 600 var(--s-1)/1 var(--f-display); letter-spacing: .16em; padding: 6px 10px; border: 1px solid currentColor; color: var(--ok); display: inline-flex; gap: 8px; align-items: center; text-transform: uppercase; }
+.mode.sim { color: var(--plasma); }
+.mode i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 10px currentColor; animation: blink 1.6s infinite; }
+@keyframes blink { 50% { opacity: .25; } }
+.clock { font: 500 var(--s-1)/1.35 var(--f-mono); color: var(--dim); text-align: right; margin-left: auto; }
+.clock b { color: var(--fg); font-weight: 500; }
+.watch { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex: 1 1 340px; min-width: 0; }
+.watch form { display: flex; flex: 1 1 150px; min-width: 0; }
+.watch input { flex: 1; min-width: 0; background: var(--hull); border: 1px solid var(--line-2); padding: 6px 10px; font: 400 var(--s-2) var(--f-mono); }
+.watch input::placeholder, .field input::placeholder { color: #4d6079; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 9px; border: 1px solid var(--line-2); background: var(--ion-soft); font: 500 var(--s-1) var(--f-mono); color: var(--ion); }
+.chip button { border: 0; background: none; color: var(--dim); cursor: pointer; padding: 0 4px; font-size: 14px; line-height: 1; }
+.chip button:hover { color: var(--crit); }
+
+.deck { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 10px; }
+.map { position: relative; height: var(--mapH); min-height: 260px; background: radial-gradient(ellipse at center, rgba(78,227,255,.06), transparent 70%), #040a13; border: 1px solid var(--line); overflow: hidden; cursor: grab; touch-action: none; }
+.map:active { cursor: grabbing; }
+.map svg { width: 100%; height: 100%; display: block; }
+.map .country { fill: var(--land); stroke: var(--land-line); stroke-width: .6; vector-effect: non-scaling-stroke; transition: fill .6s; }
+.map .country:hover { stroke: var(--ion); stroke-width: 1.2; }
+.map .country.sel { stroke: var(--plasma); stroke-width: 1.8; }
+.map.sat-on .country { fill: transparent !important; stroke: rgba(150,230,255,.35); }
+.map.sat-on .country:hover { fill: rgba(78,227,255,.12) !important; }
+.map.sat-on .country.sel { fill: rgba(255,169,77,.14) !important; }
+.map .grat { fill: none; stroke: rgba(78,227,255,.07); stroke-width: .5; vector-effect: non-scaling-stroke; }
+.map .night { fill: var(--night); pointer-events: none; }
+.map .wx text, .map .tvp text { font: 500 7px var(--f-mono); paint-order: stroke; stroke: #02060c; stroke-width: 2.2px; pointer-events: none; }
+.map .pt { cursor: pointer; }
+.clouds { animation: drift 420s linear infinite; pointer-events: none; }
+@keyframes drift { to { transform: translateX(-1000px); } }
+.quake-ring { fill: none; stroke: var(--crit); animation: ring 2.4s ease-out infinite; transform-box: fill-box; transform-origin: center; pointer-events: none; }
+@keyframes ring { from { transform: scale(1); opacity: .9; } to { transform: scale(3.4); opacity: 0; } }
+.ping { fill: none; stroke-width: .6; animation: ping 1.4s ease-out forwards; transform-box: fill-box; transform-origin: center; pointer-events: none; }
+@keyframes ping { from { transform: scale(1); opacity: 1; } to { transform: scale(7); opacity: 0; } }
+.scan { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(90deg, transparent, rgba(78,227,255,.08) 48%, rgba(78,227,255,.25) 50%, transparent 52%); background-size: 40% 100%; background-repeat: no-repeat; animation: scan 9s linear infinite; mix-blend-mode: screen; }
+@keyframes scan { from { background-position: -40% 0; } to { background-position: 140% 0; } }
+.hud { position: absolute; pointer-events: none; font: 500 11px/1.4 var(--f-mono); color: var(--ion); text-shadow: 0 0 6px rgba(78,227,255,.6); }
+.hud.tl { top: 48px; left: 12px; } .hud.br { bottom: 10px; right: 12px; text-align: right; color: var(--dim); text-shadow: none; }
+.toolbar { position: absolute; top: 8px; left: 8px; display: flex; flex-wrap: wrap; gap: 4px; z-index: 3; max-width: calc(100% - 200px); }
+.tb { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-2); background: rgba(3,8,16,.82); backdrop-filter: blur(6px); padding: 6px 10px; cursor: pointer; font: 600 11px/1 var(--f-display); letter-spacing: .12em; text-transform: uppercase; color: var(--fg); }
+.tb:hover { border-color: var(--ion); color: var(--ion); }
+.tb[aria-pressed="true"] { border-color: var(--ion); color: var(--ion); background: rgba(10,40,55,.9); box-shadow: inset 0 0 12px rgba(78,227,255,.25); }
+.tb svg { width: 13px; height: 13px; }
+.layers { position: absolute; top: 8px; right: 8px; z-index: 3; background: rgba(3,8,16,.86); border: 1px solid var(--line-2); backdrop-filter: blur(6px); max-height: calc(100% - 16px); overflow: auto; width: 214px; }
+.layers > button { width: 100%; text-align: left; border: 0; background: none; padding: 8px 10px; cursor: pointer; display: flex; justify-content: space-between; }
+.layers .body { display: flex; flex-direction: column; gap: 4px; padding: 0 10px 10px; }
+.layers .body[hidden] { display: none; }
+.layers label { display: flex; align-items: center; gap: 8px; font: 500 11px var(--f-mono); cursor: pointer; white-space: nowrap; }
+.layers input { accent-color: var(--ion); margin: 0; }
+.layers i { width: 9px; height: 9px; flex: none; }
+.layers select { width: 100%; background: var(--void); border: 1px solid var(--line-2); padding: 4px 6px; font: 500 11px var(--f-mono); }
+.layers .sub { margin: 6px 0 2px; }
+.zoomctl { position: absolute; left: 8px; bottom: 8px; display: flex; flex-direction: column; gap: 4px; z-index: 3; }
+.zoomctl .tb { width: 30px; height: 30px; padding: 0; justify-content: center; font-size: 15px; }
+.legend { position: absolute; left: 48px; bottom: 8px; right: 260px; display: flex; flex-wrap: wrap; gap: 4px 12px; font: 500 10px var(--f-mono); color: var(--dim); pointer-events: none; }
+.legend span { display: inline-flex; align-items: center; gap: 5px; text-shadow: 0 0 4px #000; }
+.legend i { width: 7px; height: 7px; border-radius: 50%; }
+.tip { position: absolute; pointer-events: none; z-index: 5; max-width: 280px; background: rgba(3,8,16,.95); border: 1px solid var(--ion); padding: 8px 10px; font: 400 var(--s-1)/1.45 var(--f-body); box-shadow: 0 0 20px rgba(78,227,255,.2); }
+.tip b { font-family: var(--f-display); letter-spacing: .06em; }
+.deck:fullscreen { background: var(--void); padding: 10px; grid-template-rows: 100%; height: 100vh; }
+.deck.fs { position: fixed; inset: 0; z-index: 90; background: var(--void); padding: calc(10px + env(safe-area-inset-top, 0px)) calc(10px + env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) calc(10px + env(safe-area-inset-left, 0px)); grid-template-rows: 100%; }
+.deck:fullscreen .map, .deck.fs .map, .deck:fullscreen .side, .deck.fs .side { height: 100%; }
+
+.side { height: var(--mapH); min-height: 260px; display: flex; flex-direction: column; background: linear-gradient(180deg, var(--hull-2), var(--hull)); border: 1px solid var(--line); min-width: 0; position: relative; }
+.side::before { content: ""; position: absolute; top: -1px; left: -1px; width: 12px; height: 12px; border: 2px solid var(--ion); border-right: 0; border-bottom: 0; }
+.stabs { display: flex; border-bottom: 1px solid var(--line); flex: none; }
+.stabs button { flex: 1; border: 0; background: none; padding: 10px 6px; cursor: pointer; font: 600 11px/1 var(--f-display); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); border-bottom: 2px solid transparent; }
+.stabs button[aria-selected="true"] { color: var(--ion); border-bottom-color: var(--ion); }
+.spane { flex: 1; overflow: auto; padding: 12px 14px; min-height: 0; }
+.spane[hidden] { display: none; }
+
+.tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; margin-top: 8px; }
+.tabs a { flex: none; text-decoration: none; color: var(--dim); font: 600 var(--s-2)/1 var(--f-display); letter-spacing: .16em; text-transform: uppercase; padding: 11px 16px; border-bottom: 2px solid transparent; position: relative; }
+.tabs a:hover { color: var(--fg); }
+.tabs a[aria-current="page"] { color: var(--ion); border-bottom-color: var(--ion); background: linear-gradient(to top, var(--ion-soft), transparent); }
+.tabs a .badge { position: absolute; top: 5px; right: 2px; min-width: 16px; padding: 1px 4px; font: 600 10px/14px var(--f-mono); background: var(--crit); color: #fff; text-align: center; }
+
+@media (max-width: 1080px) {
+  .deck { grid-template-columns: minmax(0, 1fr); }
+  .map { height: max(230px, 52vw); }
+  .dock.pinned .map { height: max(190px, 44vw); }
+  .dock.pinned .watch, .dock.pinned .clock, .dock.pinned .brand small { display: none; }
+  .side { height: auto; max-height: 520px; margin-top: 14px; }
+  .legend { display: none; }
+  .layers { width: 160px; }
+  .toolbar { max-width: calc(100% - 180px); }
+  .tb .t { display: none; }
+}
+
+/* ---------- content ---------- */
+main { padding-block: 14px 56px; }
+.kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); margin-bottom: 14px; }
+.kpi { background: var(--hull); padding: 10px 14px; min-width: 0; }
+.kpi .v { font: 600 1.45rem/1.1 var(--f-display); margin-top: 5px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi .v small { font: 500 var(--s-1) var(--f-mono); color: var(--dim); margin-left: 4px; }
+.kpi .spark { height: 20px; width: 100%; display: block; margin-top: 4px; }
+.v.pos { color: var(--ok); } .v.neg { color: var(--crit); } .v.warn { color: var(--plasma); }
+@media (max-width: 1100px) { .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 560px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.panel { position: relative; background: linear-gradient(180deg, var(--hull-2), var(--hull)); border: 1px solid var(--line); padding: 14px 16px; min-width: 0; }
+.panel::before, .panel::after { content: ""; position: absolute; width: 12px; height: 12px; border: 2px solid var(--ion); pointer-events: none; }
+.panel::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
+.panel::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
+.panel > header, .spane > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+h2 { margin: 0; font: 600 var(--s-2)/1.2 var(--f-display); letter-spacing: .18em; text-transform: uppercase; text-wrap: balance; }
+h2::before { content: "▸ "; color: var(--ion); }
+.btn { border: 1px solid var(--line-2); background: var(--hull); padding: 7px 12px; cursor: pointer; font: 600 var(--s-1)/1 var(--f-display); letter-spacing: .14em; text-transform: uppercase; }
+.btn:hover { border-color: var(--ion); color: var(--ion); }
+.btn.primary { background: var(--ion); color: #021018; border-color: var(--ion); }
+.btn.primary:hover { filter: brightness(1.1); color: #021018; }
+.btn[aria-pressed="true"] { background: var(--ion-soft); border-color: var(--ion); color: var(--ion); }
+.btn.sm { padding: 5px 9px; font-size: 10px; }
+.grid { display: grid; gap: 14px; }
+.view[hidden] { display: none !important; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.empty { color: var(--dim); font-size: var(--s-2); padding: 8px 0; }
+.note { font-size: var(--s-1); color: var(--dim); line-height: 1.5; }
+.error { color: var(--crit); font-size: var(--s-2); }
+
+/* topic chips */
+.topics { display: flex; flex-wrap: wrap; gap: 6px; }
+.tchip { display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border: 1px solid var(--line-2); background: var(--hull); cursor: pointer; font: 600 11px/1 var(--f-display); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
+.tchip i { width: 8px; height: 8px; transform: rotate(45deg); }
+.tchip[aria-pressed="true"] { color: var(--fg); border-color: currentColor; background: var(--hull-2); box-shadow: inset 0 0 14px rgba(78,227,255,.12); }
+.ttag { display: inline-flex; align-items: center; gap: 5px; font: 500 10px/1 var(--f-mono); padding: 3px 6px; border: 1px solid; text-transform: uppercase; letter-spacing: .06em; }
+
+/* side-pane content */
+.detail dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 14px; margin: 0; font-size: var(--s-2); }
+.detail dt { color: var(--dim); font: 500 11px/1.7 var(--f-mono); text-transform: uppercase; letter-spacing: .08em; }
+.detail dd { margin: 0; overflow-wrap: anywhere; }
+.big { font: 600 var(--s-5)/1.15 var(--f-display); margin: 0 0 10px; text-wrap: balance; }
+.ptext { font-size: var(--s-3); line-height: 1.55; margin: 8px 0 10px; overflow-wrap: anywhere; }
+.sub { margin: 16px 0 6px; }
+.prow { display: grid; grid-template-columns: 3px minmax(0, 1fr); gap: 10px; padding: 8px 4px 8px 0; border: 0; border-bottom: 1px solid var(--line); background: none; text-align: left; width: 100%; cursor: pointer; color: inherit; }
+.prow:hover { background: var(--ion-soft); }
+.prow .m { font: 400 10.5px var(--f-mono); color: var(--dim); display: flex; gap: 8px; flex-wrap: wrap; }
+.prow .m b { font-weight: 500; }
+.prow .t { font-size: var(--s-2); line-height: 1.4; margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.ev { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 8px 4px; border: 0; border-bottom: 1px solid var(--line); cursor: pointer; background: none; text-align: left; width: 100%; color: inherit; }
+.ev:hover { background: var(--ion-soft); }
+.ev .dot { width: 8px; height: 8px; margin-top: 6px; }
+.ev .t { font-size: var(--s-2); line-height: 1.35; overflow-wrap: anywhere; }
+.ev .t small { display: block; color: var(--plasma); font: 500 11px var(--f-mono); letter-spacing: .06em; }
+.ev .m { font: 400 11px var(--f-mono); color: var(--dim); white-space: nowrap; }
+.sev-critical { background: var(--crit); box-shadow: 0 0 10px var(--crit); } .sev-warning { background: var(--plasma); } .sev-info { background: var(--ion); }
+.tag { font: 500 10px/1 var(--f-mono); padding: 3px 6px; border: 1px solid; text-transform: uppercase; letter-spacing: .08em; }
+.tag.pos { color: var(--ok); } .tag.neg { color: var(--crit); } .tag.neu { color: var(--dim); } .tag.sim { color: var(--plasma); }
+.meter { display: inline-block; width: 60px; height: 4px; background: var(--line); position: relative; vertical-align: middle; }
+.meter b { position: absolute; top: 0; bottom: 0; }
+
+/* feeds */
+.feeds { grid-template-columns: 290px minmax(0, 1fr); align-items: start; }
+@media (max-width: 900px) { .feeds { grid-template-columns: minmax(0, 1fr); } }
+.filters { display: flex; flex-direction: column; gap: 14px; }
+.plats { display: flex; flex-wrap: wrap; gap: 6px; }
+.pbtn { display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px; border: 1px solid var(--line-2); background: var(--hull); cursor: pointer; font: 500 var(--s-1) var(--f-mono); color: var(--dim); }
+.pbtn i { width: 8px; height: 8px; border-radius: 50%; }
+.pbtn[aria-pressed="true"] { border-color: currentColor; background: var(--hull-2); }
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field input, .field select { background: var(--void); border: 1px solid var(--line-2); padding: 8px 10px; font: 400 var(--s-2) var(--f-mono); width: 100%; min-width: 0; }
+.posts { display: flex; flex-direction: column; gap: 8px; }
+.post { display: grid; grid-template-columns: 4px minmax(0, 1fr); gap: 12px; padding: 12px 14px 12px 0; background: var(--hull); border: 1px solid var(--line); animation: slidein .4s ease-out; cursor: pointer; text-align: left; color: inherit; width: 100%; }
+.post:hover { border-color: var(--line-2); background: var(--hull-2); }
+@keyframes slidein { from { opacity: 0; transform: translateY(-6px); } }
+.post .meta { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: center; font: 400 11px var(--f-mono); color: var(--dim); }
+.post .meta .pl { font-weight: 500; letter-spacing: .06em; text-transform: uppercase; }
+.post .meta .who { color: var(--fg); }
+.post p { margin: 6px 0 8px; overflow-wrap: anywhere; max-width: 78ch; }
+
+/* alerts */
+.alerts { grid-template-columns: minmax(0, 430px) minmax(0, 1fr); align-items: start; }
+@media (max-width: 900px) { .alerts { grid-template-columns: minmax(0, 1fr); } }
+.form { display: flex; flex-direction: column; gap: 12px; }
+.checks { display: flex; flex-wrap: wrap; gap: 6px 12px; font: 400 var(--s-1) var(--f-mono); }
+.checks label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; white-space: nowrap; }
+.checks input { accent-color: var(--ion); }
+.rule { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.rule h3 { margin: 0; font: 600 var(--s-3)/1.3 var(--f-display); letter-spacing: .04em; }
+.rule .meta { font: 400 11px/1.6 var(--f-mono); color: var(--dim); }
+.rule .hits { font: 600 var(--s-4)/1 var(--f-display); color: var(--plasma); text-align: right; }
+.list { display: flex; flex-direction: column; max-height: 560px; overflow: auto; }
+
+/* analytics */
+.an-top { grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); }
+.an-mid { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); }
+@media (max-width: 1100px) { .an-top, .an-mid { grid-template-columns: minmax(0, 1fr); } }
+.brief p { font: 400 var(--s-4)/1.6 var(--f-body); margin: 0; max-width: 70ch; }
+.brief .eng { font: 500 11px var(--f-mono); color: var(--dim); margin-top: 12px; }
+.typing::after { content: "▌"; color: var(--ion); animation: blink 1s infinite; }
+.chartbox { position: relative; height: 240px; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 190px), 1fr)); gap: 10px; }
+.tile { text-align: left; border: 1px solid var(--line); background: var(--void); padding: 12px; cursor: pointer; color: inherit; display: flex; flex-direction: column; gap: 6px; position: relative; overflow: hidden; }
+.tile::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--c); }
+.tile:hover { border-color: var(--line-2); }
+.tile[aria-pressed="true"] { border-color: var(--c); box-shadow: inset 0 0 24px color-mix(in srgb, var(--c) 18%, transparent); }
+.tile .tn { font: 600 var(--s-1)/1.2 var(--f-display); letter-spacing: .12em; text-transform: uppercase; color: var(--c); }
+.tile .tv { font: 600 1.5rem/1 var(--f-display); font-variant-numeric: tabular-nums; }
+.tile .tv small { font: 500 11px var(--f-mono); color: var(--dim); margin-left: 6px; }
+.tile .ts { display: flex; justify-content: space-between; align-items: center; font: 400 11px var(--f-mono); color: var(--dim); }
+.tile .bar { height: 4px; background: var(--line); } .tile .bar b { display: block; height: 100%; background: var(--c); }
+.tbl-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: var(--s-2); }
+th { text-align: left; font: 500 10px var(--f-display); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); padding: 6px 8px; border-bottom: 1px solid var(--line-2); white-space: nowrap; }
+td { padding: 7px 8px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; vertical-align: middle; }
+td.num { font-family: var(--f-mono); text-align: right; } th.num { text-align: right; }
+.vel { display: inline-block; height: 6px; background: var(--ion); vertical-align: middle; margin-right: 6px; } .vel.dn { background: var(--dim); }
+.bars { display: flex; flex-direction: column; gap: 8px; }
+.barrow { display: grid; grid-template-columns: minmax(0, 120px) minmax(0, 1fr) 48px; gap: 10px; align-items: center; font-size: var(--s-2); }
+.barrow span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.barrow .track { height: 8px; background: var(--line); position: relative; }
+.barrow .track b { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, var(--ion), rgba(78,227,255,.4)); }
+.barrow .n { font: 500 var(--s-1) var(--f-mono); text-align: right; color: var(--dim); }
+.click { cursor: pointer; } .click:hover span:first-child, .trow:hover td { color: var(--ion); }
+.trow { cursor: pointer; }
+
+/* live tv */
+.tvgrid { grid-template-columns: 320px minmax(0, 1fr); align-items: start; }
+@media (max-width: 1000px) { .tvgrid { grid-template-columns: minmax(0, 1fr); } }
+.chan { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; padding: 10px 0; border-bottom: 1px solid var(--line); align-items: center; }
+.chan b { font: 600 var(--s-3)/1.2 var(--f-display); letter-spacing: .04em; }
+.chan .m { font: 400 11px var(--f-mono); color: var(--dim); }
+.chan .row { grid-column: 1 / -1; }
+.wall { display: grid; gap: 10px; }
+.wall.l1 { grid-template-columns: minmax(0, 1fr); } .wall.l2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } .wall.l4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 700px) { .wall.l2, .wall.l4 { grid-template-columns: minmax(0, 1fr); } }
+.slot { border: 1px solid var(--line-2); background: #000; display: flex; flex-direction: column; min-width: 0; }
+.slot header { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 10px; background: var(--hull-2); font: 600 11px var(--f-display); letter-spacing: .12em; text-transform: uppercase; }
+.slot header .live { color: var(--crit); display: inline-flex; gap: 6px; align-items: center; }
+.slot header .live i { width: 6px; height: 6px; border-radius: 50%; background: var(--crit); animation: blink 1.2s infinite; }
+.screen { position: relative; aspect-ratio: 16 / 9; max-width: 100%; background: #000; }
+.screen iframe, .screen video { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+.standby { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 16px; background:
+  repeating-linear-gradient(0deg, rgba(255,255,255,.04) 0 2px, transparent 2px 4px), radial-gradient(circle at center, #0c2235, #000 75%); }
+.standby::before { content: ""; position: absolute; inset: 0; background: repeating-radial-gradient(circle at 30% 40%, rgba(255,255,255,.05) 0 1px, transparent 1px 3px); animation: static .25s steps(3) infinite; }
+@keyframes static { 33% { transform: translate(1px, -1px); } 66% { transform: translate(-1px, 1px); } }
+.standby div { position: relative; font: 500 var(--s-1)/1.6 var(--f-mono); color: var(--dim); max-width: 42ch; }
+.standby b { display: block; font: 600 var(--s-4)/1.3 var(--f-display); color: var(--ion); letter-spacing: .12em; margin-bottom: 6px; text-transform: uppercase; }
+
+/* sources */
+.src { grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); }
+.st { font: 500 11px var(--f-mono); display: inline-flex; align-items: center; gap: 6px; }
+.st i { width: 8px; height: 8px; border-radius: 50%; }
+.code { font: 400 var(--s-1)/1.6 var(--f-mono); background: var(--void); border: 1px solid var(--line); padding: 10px 12px; overflow-x: auto; white-space: pre; color: var(--ion); }
+
+/* sos ticker */
+.sos { display: flex; align-items: center; gap: 12px; margin-top: 6px; padding: 7px 12px; border: 1px solid var(--crit); background: linear-gradient(90deg, rgba(255,79,109,.22), rgba(255,79,109,.05)); font-size: var(--s-2); animation: sosglow 1.6s ease-in-out infinite; min-width: 0; }
+.sos[hidden] { display: none; }
+.sos b { font: 700 var(--s-1)/1 var(--f-display); letter-spacing: .18em; color: var(--crit); white-space: nowrap; }
+.sos span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@keyframes sosglow { 50% { box-shadow: 0 0 22px rgba(255,79,109,.45); } }
+
+/* radio & sos */
+.radio { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1fr); align-items: start; }
+@media (max-width: 1250px) { .radio { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .radio .talk { grid-column: 1 / -1; } }
+@media (max-width: 820px) { .radio { grid-template-columns: minmax(0, 1fr); } }
+.inc { display: grid; grid-template-columns: 4px minmax(0, 1fr) auto; gap: 10px; padding: 9px 4px 9px 0; border: 0; border-bottom: 1px solid var(--line); background: none; text-align: left; width: 100%; color: inherit; cursor: pointer; }
+.inc:hover { background: rgba(255,79,109,.07); }
+.inc .k { font: 600 10px/1 var(--f-display); letter-spacing: .14em; text-transform: uppercase; }
+.inc .t { font-size: var(--s-2); line-height: 1.35; margin-top: 4px; overflow-wrap: anywhere; }
+.inc .d { font: 400 11px/1.4 var(--f-mono); color: var(--dim); margin-top: 3px; overflow-wrap: anywhere; }
+.inc .m { font: 400 11px var(--f-mono); color: var(--dim); white-space: nowrap; }
+.bar-critical { background: var(--crit); box-shadow: 0 0 8px var(--crit); } .bar-warning { background: var(--plasma); } .bar-info { background: var(--ion); }
+.rx { background: #01040a; border: 1px solid var(--line-2); padding: 14px 16px; position: relative; overflow: hidden; }
+.rx::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(78,227,255,.035) 0 1px, transparent 1px 3px); }
+.rx .freq { font: 600 clamp(2rem, 4.2vw, 3rem)/1 var(--f-display); letter-spacing: .04em; color: var(--ion); text-shadow: 0 0 18px rgba(78,227,255,.55); font-variant-numeric: tabular-nums; }
+.rx .freq small { font-size: .4em; color: var(--dim); text-shadow: none; margin-left: 8px; letter-spacing: .14em; }
+.rx .chan { font: 500 var(--s-2) var(--f-mono); color: var(--fg); margin-top: 6px; }
+.rx .stat { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font: 500 11px var(--f-mono); color: var(--dim); }
+.rx .stat .on { color: var(--ok); } .rx .stat .tx { color: var(--crit); }
+.smeter { display: grid; grid-template-columns: repeat(24, 1fr); gap: 2px; height: 14px; margin-top: 12px; }
+.smeter i { background: #0d1f30; }
+.smeter i.l { background: var(--ok); } .smeter i.l.h { background: var(--plasma); } .smeter i.l.x { background: var(--crit); }
+.seg { display: flex; border: 1px solid var(--line-2); }
+.seg button { flex: 1; border: 0; background: var(--hull); padding: 8px 6px; cursor: pointer; font: 600 10.5px/1.1 var(--f-display); letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
+.seg button + button { border-left: 1px solid var(--line-2); }
+.seg button[aria-pressed="true"] { color: var(--ion); background: var(--ion-soft); }
+.chs { display: flex; flex-direction: column; max-height: 300px; overflow: auto; }
+.chs .grp { margin: 10px 0 4px; }
+.ch { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; padding: 7px 8px; border: 1px solid transparent; background: none; color: inherit; text-align: left; cursor: pointer; }
+.ch:hover { border-color: var(--line-2); background: var(--hull-2); }
+.ch[aria-pressed="true"] { border-color: var(--ion); background: var(--ion-soft); }
+.ch b { font: 500 var(--s-2) var(--f-body); } .ch span { font: 500 11px var(--f-mono); color: var(--ion); text-align: right; }
+.ch small { grid-column: 1 / -1; font-size: 11px; color: var(--dim); line-height: 1.35; }
+.rxlog .item { padding: 10px 0; border-bottom: 1px solid var(--line); display: grid; gap: 5px; }
+.rxlog .item.dis { background: linear-gradient(90deg, rgba(255,79,109,.12), transparent 70%); padding-left: 8px; border-left: 3px solid var(--crit); }
+.rxlog .top { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font: 500 11px var(--f-mono); color: var(--dim); }
+.rxlog .top b { color: var(--fg); font-weight: 500; }
+.rxlog p { margin: 0; font-size: var(--s-2); line-height: 1.5; overflow-wrap: anywhere; }
+.rxlog audio { width: 100%; height: 30px; }
+.dtag { font: 700 10px/1 var(--f-display); letter-spacing: .14em; padding: 3px 7px; color: #fff; background: var(--crit); }
+.dtag.warning { background: var(--plasma); color: #1a0d00; } .dtag.info { background: var(--line-2); }
+.ptt { display: grid; place-items: center; width: min(190px, 60vw); aspect-ratio: 1; max-width: 100%; margin: 12px auto; border-radius: 50%; border: 2px solid var(--line-2); cursor: pointer; user-select: none; touch-action: none;
+  background: radial-gradient(circle at 50% 40%, #13263c, #050b14 70%); color: var(--fg); font: 700 var(--s-2)/1.3 var(--f-display); letter-spacing: .16em; text-transform: uppercase; text-align: center; box-shadow: inset 0 0 30px rgba(78,227,255,.12), 0 0 0 6px rgba(78,227,255,.04); }
+.ptt:hover { border-color: var(--ion); }
+.ptt small { display: block; font: 500 10px var(--f-mono); color: var(--dim); letter-spacing: .08em; margin-top: 6px; text-transform: none; }
+.ptt.live { border-color: var(--crit); color: #fff; background: radial-gradient(circle at 50% 40%, #6a1022, #1a0308 70%); box-shadow: 0 0 40px rgba(255,79,109,.55), inset 0 0 30px rgba(255,79,109,.4); animation: blink 1s infinite; }
+.ptt.air { border-color: rgba(255,169,77,.6); }
+.ptt:disabled, .ptt[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
+.ic { display: grid; gap: 4px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.ic .top { display: flex; gap: 10px; flex-wrap: wrap; font: 500 11px var(--f-mono); color: var(--dim); }
+.ic .top b { color: var(--ion); font-weight: 500; } .ic .top .me { color: var(--plasma); }
+.ic p { margin: 0; font-size: var(--s-2); overflow-wrap: anywhere; }
+.ic audio { width: 100%; height: 30px; }
+.warnbox { border: 1px solid rgba(255,169,77,.5); background: rgba(255,169,77,.07); padding: 10px 12px; font-size: var(--s-1); line-height: 1.55; color: var(--fg); }
+.warnbox b { color: var(--plasma); font-family: var(--f-display); letter-spacing: .1em; text-transform: uppercase; font-size: 11px; }
+.okbox { border: 1px solid rgba(63,242,164,.45); background: rgba(63,242,164,.06); padding: 10px 12px; font-size: var(--s-1); }
+.stations { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 8px; }
+.stn { border: 1px solid var(--line); background: var(--void); padding: 10px 12px; display: grid; gap: 6px; min-width: 0; }
+.stn[aria-current="true"] { border-color: var(--ion); box-shadow: inset 0 0 18px rgba(78,227,255,.15); }
+.stn b { font: 600 var(--s-2)/1.3 var(--f-display); letter-spacing: .04em; overflow-wrap: anywhere; }
+.stn .m { font: 400 11px var(--f-mono); color: var(--dim); overflow-wrap: anywhere; }
+.numtbl td:last-child { font: 600 var(--s-3) var(--f-mono); color: var(--plasma); text-align: right; white-space: nowrap; }
+.toasts { position: fixed; right: calc(16px + env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 96; display: flex; flex-direction: column; gap: 8px; width: min(360px, calc(100vw - 32px)); }
+.toast { background: rgba(8,16,27,.96); border: 1px solid var(--plasma); padding: 10px 12px; box-shadow: 0 0 30px rgba(255,169,77,.18); animation: slidein .3s ease-out; font-size: var(--s-2); cursor: pointer; }
+.toast b { display: block; font: 600 var(--s-1)/1.4 var(--f-display); letter-spacing: .14em; text-transform: uppercase; color: var(--plasma); }
+.toast p { margin: 4px 0 0; overflow-wrap: anywhere; }
+.boot { position: fixed; inset: 0; z-index: 99; display: grid; place-items: center; background: var(--void); font: 500 var(--s-2) var(--f-mono); color: var(--ion); letter-spacing: .2em; text-transform: uppercase; transition: opacity .5s; }
+.boot.done { opacity: 0; pointer-events: none; }
+@media (max-width: 700px) { .toast { padding: 7px 10px; font-size: 12px; } .toast p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } .sos { font-size: 12px; padding: 5px 8px; gap: 8px; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } .scan { display: none; } }
+</style>
+
+<div class="boot" id="boot">Acquiring orbital uplink…</div>
+
+<div class="dock pinned" id="dock">
+  <div class="wrap">
+    <header class="top">
+      <div class="brand">
+        <svg viewBox="0 0 38 38" aria-hidden="true">
+          <circle cx="19" cy="19" r="17" fill="none" stroke="#4ee3ff" stroke-opacity=".5"/>
+          <circle cx="19" cy="19" r="10" fill="none" stroke="#4ee3ff" stroke-opacity=".3"/>
+          <path d="M19 2v6M19 30v6M2 19h6M30 19h6" stroke="#4ee3ff" stroke-width="1.5"/>
+          <path class="sweep" d="M19 19 L19 2 A17 17 0 0 1 33.7 10.5 Z" fill="#4ee3ff" fill-opacity=".28"/>
+          <circle cx="19" cy="19" r="2.2" fill="#ffa94d"/>
+        </svg>
+        <div><h1>SCAVENGE</h1><small>Global signal intelligence</small></div>
+      </div>
+      <span class="mode sim" id="mode"><i></i><span>Linking</span></span>
+      <div class="watch">
+        <span class="label">Watching</span>
+        <span id="watchChips" class="row"></span>
+        <form id="watchForm"><input id="watchInput" placeholder="+ add a word, #hashtag or phrase" aria-label="Add watch term" autocomplete="off"></form>
+      </div>
+      <div class="clock" id="clock"></div>
+    </header>
+
+    <section class="deck" id="deck" aria-label="World map">
+      <div class="map" id="map">
+        <div class="scan"></div>
+        <div class="toolbar">
+          <button class="tb" id="tbSat" aria-pressed="false" title="Toggle satellite view"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2 2 2 10 0 12M8 2c-2 2-2 10 0 12"/></svg><span class="t">Satellite</span></button>
+          <button class="tb" id="tbFull" aria-pressed="false" title="Full screen"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg><span class="t">Full screen</span></button>
+          <button class="tb" id="tbSize" title="Change map height"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 1v14M5 4l3-3 3 3M5 12l3 3 3-3"/></svg><span class="t" id="tbSizeT">Size M</span></button>
+          <button class="tb" id="tbPin" aria-pressed="true" title="Keep the map docked at the top while you scroll"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M6 2h4l-1 5 3 2H4l3-2zM8 9v6"/></svg><span class="t">Pinned</span></button>
+        </div>
+        <div class="hud tl" id="hudTL">ORBITAL VIEW · EQUIRECTANGULAR</div>
+        <div class="hud br" id="hudBR">LAT —  LON —</div>
+        <div class="layers" id="layers"><button class="label" id="layersBtn" aria-expanded="true">Layers <span>▾</span></button><div class="body" id="layersBody"></div></div>
+        <div class="zoomctl"><button class="tb" id="zin" aria-label="Zoom in">+</button><button class="tb" id="zout" aria-label="Zoom out">−</button><button class="tb" id="zreset" aria-label="Reset view">⌖</button></div>
+        <div class="legend" id="legend"></div>
+        <div class="tip" id="tip" hidden></div>
+      </div>
+      <aside class="side" id="side">
+        <div class="stabs" role="tablist">
+          <button role="tab" data-p="inspect" aria-selected="true">Inspect</button>
+          <button role="tab" data-p="posts" aria-selected="false">Posts</button>
+          <button role="tab" data-p="events" aria-selected="false">Events</button>
+        </div>
+        <div class="spane detail" id="p-inspect"></div>
+        <div class="spane" id="p-posts" hidden></div>
+        <div class="spane" id="p-events" hidden></div>
+      </aside>
+    </section>
+
+    <nav class="tabs" id="tabs" aria-label="Sections">
+      <a href="#overview">Overview</a><a href="#feeds">Live feeds</a><a href="#alerts">Alerts<span class="badge" id="alertBadge" hidden>0</span></a><a href="#radio">Radio &amp; SOS<span class="badge" id="sosBadge" hidden>0</span></a><a href="#analytics">Analytics</a><a href="#tv">Live TV</a><a href="#sources">Sources</a>
+    </nav>
+    <div class="sos" id="sos" hidden role="alert"><b>⚠ <span id="sosLabel" style="overflow:visible">SOS</span></b><span id="sosText"></span><button class="btn sm" id="sosView">Locate</button><button class="btn sm" id="sosHide" aria-label="Dismiss">×</button></div>
+  </div>
+</div>
+
+<main class="wrap">
+  <section class="kpis" id="kpis" aria-label="Live telemetry"></section>
+
+  <!-- OVERVIEW -->
+  <section class="view grid" id="v-overview">
+    <div class="grid an-mid">
+      <div class="panel"><header><h2>Topics of interest</h2><span class="label">last 60 min · click to open</span></header><div class="tiles" id="ovTopics"></div></div>
+      <div class="panel"><header><h2>Trending now</h2></header><div class="bars" id="ovTrends"></div></div>
+      <div class="panel"><header><h2>Latest alerts</h2><a class="btn sm" href="#alerts">All alerts</a></header><div class="list" id="ovAlerts" style="max-height:300px"></div></div>
+    </div>
+  </section>
+
+  <!-- FEEDS -->
+  <section class="view grid feeds" id="v-feeds" hidden>
+    <aside class="panel filters">
+      <header><h2>Filters</h2></header>
+      <div class="field"><span class="label">Platforms</span><div class="plats" id="fPlats"></div></div>
+      <div class="field"><label class="label" for="fTopic">Topic</label><select id="fTopic"></select></div>
+      <div class="field"><label class="label" for="fQ">Search text</label><input id="fQ" placeholder="e.g. flood, #COP31, Nairobi"></div>
+      <div class="field"><label class="label" for="fMood">Sentiment</label><select id="fMood"><option value="any">Any</option><option value="positive">Positive</option><option value="neutral">Neutral</option><option value="negative">Negative</option></select></div>
+      <div class="field"><label class="label" for="fCountry">Country</label><select id="fCountry"></select></div>
+      <div class="row"><button class="btn" id="fWatch">Watch this search</button><button class="btn" id="fPause" aria-pressed="false">Pause stream</button></div>
+      <p class="note" id="fStat"></p>
+    </aside>
+    <div class="posts" id="posts"></div>
+  </section>
+
+  <!-- ALERTS -->
+  <section class="view grid alerts" id="v-alerts" hidden>
+    <form class="panel form" id="ruleForm">
+      <header><h2 id="ruleFormTitle">New alert rule</h2></header>
+      <input type="hidden" id="rId">
+      <div class="field"><label class="label" for="rName">Rule name</label><input id="rName" required placeholder="Nairobi flooding"></div>
+      <div class="field"><span class="label">Topics (optional; alert on whole categories)</span><div class="topics" id="rTopics"></div></div>
+      <div class="field"><label class="label" for="rTerms">Words to watch (comma separated, "quotes" for exact phrase; optional if a topic is chosen)</label><input id="rTerms" placeholder='flood, landslide, "heavy rain"'></div>
+      <div class="field"><span class="label">Match</span><div class="checks"><label><input type="radio" name="rMatch" value="any" checked> Any word</label><label><input type="radio" name="rMatch" value="all"> All words</label></div></div>
+      <div class="field"><span class="label">Platforms (none = all)</span><div class="checks" id="rPlats"></div></div>
+      <div class="row">
+        <div class="field" style="flex:1 1 140px"><label class="label" for="rCountry">Country</label><select id="rCountry"></select></div>
+        <div class="field" style="flex:1 1 120px"><label class="label" for="rMood">Sentiment</label><select id="rMood"><option value="any">Any</option><option value="negative">Negative only</option><option value="positive">Positive only</option></select></div>
+      </div>
+      <div class="field"><span class="label">Deliver to</span><div class="checks"><label><input type="checkbox" id="dInapp" checked> In-app alert</label><label><input type="checkbox" id="dBrowser"> Desktop notification</label><label><input type="checkbox" id="dSound"> Sound</label></div></div>
+      <div class="field"><label class="label" for="dWebhook">Webhook URL (Slack, Discord, Teams…)</label><input id="dWebhook" type="url" placeholder="https://hooks.slack.com/…"></div>
+      <div class="field"><label class="label" for="dNtfy">Phone push via ntfy.sh topic</label><input id="dNtfy" placeholder="my-scavenge-alerts"></div>
+      <p class="note" id="deliverNote"></p>
+      <div class="row"><button class="btn primary" type="submit" id="rSave">Arm rule</button><button class="btn" type="button" id="rCancel" hidden>Cancel edit</button></div>
+      <p class="error" id="rErr" hidden></p>
+    </form>
+    <div class="grid">
+      <div class="panel"><header><h2>Armed rules</h2><span class="label" id="ruleCount"></span></header><div id="rules"></div></div>
+      <div class="panel"><header><h2>Alert log</h2><button class="btn sm" id="clearAlerts">Clear log</button></header>
+        <div class="topics" id="aLogTopics" style="margin-bottom:10px"></div>
+        <div class="list" id="alog"></div></div>
+    </div>
+  </section>
+
+  <!-- ANALYTICS -->
+  <section class="view grid" id="v-analytics" hidden>
+    <div class="panel grid" style="gap:12px">
+      <div class="row" style="justify-content:space-between;align-items:flex-end">
+        <div class="row" style="align-items:flex-end">
+          <div class="field" style="min-width:200px"><label class="label" for="aScope">Region</label><select id="aScope"></select></div>
+          <div class="field"><label class="label" for="aWin">Trend window</label><select id="aWin"><option value="15">15 min</option><option value="30" selected>30 min</option><option value="60">60 min</option><option value="240">4 hours</option></select></div>
+        </div>
+        <p class="note" id="aNote" style="max-width:56ch;margin:0"></p>
+      </div>
+      <div class="field"><span class="label">Topic focus</span><div class="topics" id="aTopics"></div></div>
+    </div>
+    <div class="panel"><header><h2>Topics of interest</h2><span class="label">volume · momentum · tone</span></header><div class="tiles" id="aTiles"></div></div>
+    <div class="grid an-top">
+      <div class="panel brief"><header><h2>AI situation briefing</h2><button class="btn sm" id="aBrief">Regenerate</button></header><p id="briefText"></p><div class="eng" id="briefEng"></div></div>
+      <div class="panel"><header><h2>Signal volume by platform</h2><span class="label">posts / minute</span></header><div class="chartbox"><canvas id="cTime"></canvas></div></div>
+    </div>
+    <div class="grid an-mid">
+      <div class="panel"><header><h2>Trending now</h2><span class="label" id="trCount"></span></header><div class="tbl-wrap"><table><thead><tr><th>#</th><th>Topic</th><th class="num">Mentions</th><th>Momentum</th><th>Tone</th><th class="num">Platforms</th></tr></thead><tbody id="trBody"></tbody></table></div></div>
+      <div class="panel"><header><h2>Sentiment</h2></header><div class="chartbox" style="height:200px"><canvas id="cMood"></canvas></div><div class="bars" id="moodPlat" style="margin-top:14px"></div></div>
+      <div class="panel"><header><h2 id="geoTitle">Countries</h2></header><div class="bars" id="geoBars"></div></div>
+    </div>
+    <div class="grid an-mid">
+      <div class="panel"><header><h2>City hotspots</h2></header><div class="tbl-wrap"><table><thead><tr><th>City</th><th>Country</th><th class="num">Posts</th><th>Tone</th><th>Top topic</th></tr></thead><tbody id="cityBody"></tbody></table></div></div>
+      <div class="panel"><header><h2>Platform share</h2></header><div class="bars" id="platBars"></div></div>
+      <div class="panel"><header><h2>Earth conditions</h2></header><div id="earthSum" class="detail"></div></div>
+    </div>
+  </section>
+
+  <!-- LIVE TV -->
+  <section class="view grid tvgrid" id="v-tv" hidden>
+    <div class="grid">
+      <div class="panel"><header><h2>Channels</h2><span class="label" id="tvCount"></span></header><div id="tvList"></div></div>
+      <form class="panel form" id="tvForm">
+        <header><h2>Add a live stream</h2></header>
+        <div class="field"><label class="label" for="tvName">Channel name</label><input id="tvName" required placeholder="Citizen TV Kenya"></div>
+        <div class="field"><label class="label" for="tvUrl">Stream link</label><input id="tvUrl" type="url" required placeholder="YouTube live link, @channel/live, .m3u8 or .mp4"></div>
+        <div class="field"><label class="label" for="tvCity">Pin on map at</label><select id="tvCity"></select></div>
+        <button class="btn primary" type="submit">Add channel</button>
+        <p class="error" id="tvErr" hidden></p>
+      </form>
+    </div>
+    <div class="panel">
+      <header><h2>Video wall</h2>
+        <div class="row"><span class="label">Layout</span><button class="btn sm" data-l="1" aria-pressed="false">1</button><button class="btn sm" data-l="2" aria-pressed="false">2</button><button class="btn sm" data-l="4" aria-pressed="true">4</button></div>
+      </header>
+      <div class="wall l4" id="wall"></div>
+      <p class="note" id="tvNote" style="margin-top:12px"></p>
+    </div>
+  </section>
+
+  <!-- RADIO & SOS -->
+  <section class="view grid" id="v-radio" hidden>
+    <div class="grid radio">
+      <div class="grid">
+        <div class="panel"><header><h2>Emergency board</h2><span class="label" id="incCount"></span></header>
+          <div class="topics" id="incKinds" style="margin-bottom:8px"></div>
+          <div class="list" id="incList" style="max-height:520px"></div>
+        </div>
+        <div class="panel"><header><h2>Emergency numbers</h2><select id="numCountry" aria-label="Country" style="background:var(--void);border:1px solid var(--line-2);padding:5px 8px;font:400 12px var(--f-mono)"></select></header>
+          <table class="numtbl"><tbody id="numBody"></tbody></table>
+          <p class="note">Verify numbers locally. At sea, call on VHF 16 or press your radio's DSC distress button. In the air, use 121.5 MHz or squawk 7700.</p>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="panel"><header><h2>Receiver</h2><span class="label" id="rxSrcLabel"></span></header>
+          <div class="rx">
+            <div class="freq" id="rxFreq">156.800<small id="rxUnit">MHZ · FM</small></div>
+            <div class="chan" id="rxChan">Marine VHF 16</div>
+            <div class="smeter" id="smeter" aria-hidden="true"></div>
+            <div class="stat" id="rxStat"></div>
+          </div>
+          <div class="seg" id="rxSrc" style="margin-top:12px" role="group" aria-label="Listening source">
+            <button data-src="sdr" aria-pressed="true">Local receiver</button><button data-src="kiwi" aria-pressed="false">Public receivers</button><button data-src="online" aria-pressed="false">Online feeds</button>
+          </div>
+          <div id="rxSrcBody" style="margin-top:12px"></div>
+          <div class="row" style="margin-top:12px;align-items:flex-end">
+            <div class="field" style="flex:1 1 120px"><label class="label" for="rxHz">Frequency (MHz)</label><input id="rxHz" inputmode="decimal" value="156.800"></div>
+            <div class="field" style="flex:0 1 90px"><label class="label" for="rxMode">Mode</label><select id="rxMode"><option>fm</option><option>am</option><option>usb</option><option>lsb</option></select></div>
+            <button class="btn" id="rxTune">Tune</button>
+          </div>
+          <div class="row" style="margin-top:10px"><button class="btn primary" id="rxListen">Listen</button><button class="btn" id="rxStop">Stop</button><button class="btn" id="rxScanM">Scan marine &amp; ham FM</button><button class="btn" id="rxScanA">Scan air guard AM</button>
+            <label class="checks" style="margin-left:auto"><span>Vol</span><input type="range" id="rxVol" min="0" max="1" step="0.05" value="0.8" style="width:90px;accent-color:var(--ion)"></label></div>
+          <div class="label sub">Channels</div>
+          <div class="chs" id="chList"></div>
+        </div>
+        <div class="panel rxlog"><header><h2>Radio log</h2><label class="checks"><input type="checkbox" id="rxDistressOnly"> Distress calls only</label></header>
+          <p class="note" id="rxLogNote" style="margin-top:0"></p>
+          <div class="list" id="rxLog" style="max-height:460px"></div>
+        </div>
+      </div>
+
+      <div class="grid talk">
+        <div class="panel"><header><h2>Talk back</h2></header>
+          <div class="seg" id="tbMode" role="group" aria-label="Talk-back mode"><button data-m="ic" aria-pressed="true">Ops intercom</button><button data-m="air" aria-pressed="false">On air (licensed)</button></div>
+          <div id="tbIc" style="margin-top:12px">
+            <div class="row"><div class="field" style="flex:1 1 120px"><label class="label" for="icName">Your name</label><input id="icName" placeholder="Operator"></div>
+              <div class="field" style="flex:1 1 110px"><label class="label" for="icChan">Channel</label><select id="icChan"><option>Ops</option><option>Field team</option><option>Medical</option><option>Logistics</option></select></div></div>
+            <button class="ptt" id="icPTT" type="button">Hold to talk<small>or hold the space bar</small></button>
+            <form class="row" id="icForm"><input id="icText" placeholder="Type a message" aria-label="Message" style="flex:1;min-width:0;background:var(--void);border:1px solid var(--line-2);padding:8px 10px;font:400 13px var(--f-mono)"><button class="btn" type="submit">Send</button></form>
+            <p class="note" id="icNote"></p>
+            <div class="list" id="icLog" style="max-height:360px"></div>
+          </div>
+          <div id="tbAir" style="margin-top:12px" hidden>
+            <div class="warnbox"><b>Licensed operators only</b><br>On-air talk-back keys your own transceiver. Transmit only on frequencies your licence covers, identify with your call sign, and never send a false distress call: it is a crime and diverts rescuers. Aviation, beacon and distress-guard frequencies are always blocked.</div>
+            <div id="airStatus" style="margin-top:10px"></div>
+            <div class="row" style="margin-top:10px;align-items:flex-end">
+              <div class="field" style="flex:1 1 120px"><label class="label" for="airHz">Transmit on (MHz)</label><input id="airHz" inputmode="decimal" value="145.500"></div>
+              <div class="field" style="flex:1 1 110px"><label class="label" for="airPin">Operator PIN</label><input id="airPin" type="password" autocomplete="off"></div>
+            </div>
+            <p class="note" id="airCheck"></p>
+            <button class="ptt air" id="airPTT" type="button">Hold to transmit<small id="airPTTsub">push-to-talk</small></button>
+            <div class="label sub">Transmit log</div><div class="list" id="airLog" style="max-height:220px"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel"><header><h2>Public broadcast radio</h2><span class="label" id="stnCount"></span></header>
+      <form class="row" id="stnForm" style="align-items:flex-end">
+        <div class="field" style="flex:0 1 220px"><label class="label" for="stnCountry">Country</label><select id="stnCountry"></select></div>
+        <div class="field" style="flex:1 1 200px"><label class="label" for="stnQ">Station or genre</label><input id="stnQ" placeholder="e.g. news, Citizen, BBC"></div>
+        <button class="btn primary" type="submit">Search</button>
+      </form>
+      <p class="note" id="stnNote"></p>
+      <div class="stations" id="stnList"></div>
+    </div>
+  </section>
+
+  <!-- SOURCES -->
+  <section class="view grid" id="v-sources" hidden>
+    <div class="panel"><header><h2>Data sources</h2></header><p class="note" id="srcNote" style="max-width:80ch;margin:0"></p></div>
+    <div class="grid src" id="srcGrid"></div>
+    <div class="panel"><header><h2>Run your own Scavenge server</h2></header>
+      <div class="code">unzip scavenge.zip &amp;&amp; cd scavenge
+cp .env.example .env        # add any optional API keys
+node server/index.js        # → http://localhost:8080
+SCAVENGE_DEMO=1 node server/index.js   # offline simulator</div>
+    </div>
+  </section>
+  <div id="sideSlot" style="margin-top:14px"></div>
+</main>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script>window.echarts = { registerMap: function (n, g) { window.__WORLD = g; } };</script>
+<script src="https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/js/world.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3@7.8.5/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="js/core.js"></script>
+<script src="js/sim.js"></script>
+<script src="js/radio.js"></script>
+<script>
+(() => {
+'use strict';
+const C = window.ScavengeCore;
+const $ = s => document.querySelector(s);
+const $$ = s => [...document.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const fmt = n => n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e4 ? (n / 1e3).toFixed(1) + 'k' : Math.round(n).toLocaleString();
+const ago = ts => { const s = Math.max(0, (Date.now() - ts) / 1000); return s < 60 ? Math.floor(s) + 's' : s < 3600 ? Math.floor(s / 60) + 'm' : s < 86400 ? Math.floor(s / 3600) + 'h' : Math.floor(s / 86400) + 'd'; };
+const store = { get(k, d) { try { const v = localStorage.getItem('scavenge.' + k); return v ? JSON.parse(v) : d; } catch { return d; } }, set(k, v) { try { localStorage.setItem('scavenge.' + k, JSON.stringify(v)); } catch {} } };
+
+const RAD = window.ScavengeRadio;
+const PLAT = {
+  radio: { label: 'Radio', color: '#ff66c4' }, emergency: { label: 'Emergency feeds', color: '#ff3b3b' },
+  x: { label: 'X', color: '#eef3fb' }, facebook: { label: 'Facebook', color: '#6b8cff' }, linkedin: { label: 'LinkedIn', color: '#2ec4b6' },
+  reddit: { label: 'Reddit', color: '#ff7b47' }, mastodon: { label: 'Mastodon', color: '#b490ff' }, bluesky: { label: 'Bluesky', color: '#3fa9ff' },
+  youtube: { label: 'YouTube', color: '#ff4f6a' }, hackernews: { label: 'Hacker News', color: '#ffc53d' }, news: { label: 'World news', color: '#9be15d' }
+};
+const TOPIC_COLORS = { economy: '#ffc53d', politics: '#7d9bff', conflict: '#ff4f6d', disaster: '#36d6ff', tech: '#b490ff', health: '#3ff2a4', sports: '#ff9f43', crime: '#ff7b47', emergency: '#ff3b3b' };
+const TOPICS = Object.fromEntries(Object.entries(C.CATEGORIES).map(([k, v]) => [k, { label: v.label, color: TOPIC_COLORS[k] || '#ccd' }]));
+const NAT = { wildfires: ['#ff6a3d', 'Wildfire'], severeStorms: ['#8fb3ff', 'Severe storm'], volcanoes: ['#ff3d6e', 'Volcano'], floods: ['#36d6ff', 'Flood'], seaLakeIce: ['#d8f3ff', 'Sea & lake ice'], dustHaze: ['#d9b47a', 'Dust & haze'], drought: ['#e0a040', 'Drought'], landslides: ['#b08060', 'Landslide'], snow: ['#eef', 'Snow'], tempExtremes: ['#ff9f43', 'Extreme temperature'], earthquakes: ['#ff4f6d', 'Earthquake'] };
+const WMO = c => c === 0 ? 'Clear' : c <= 3 ? 'Cloudy' : c <= 48 ? 'Fog' : c <= 57 ? 'Drizzle' : c <= 67 ? 'Rain' : c <= 77 ? 'Snow' : c <= 82 ? 'Showers' : c <= 86 ? 'Snow showers' : 'Thunderstorm';
+const tempColor = t => d3.interpolateRgbBasis(['#5aa9ff', '#4ee3ff', '#3ff2a4', '#ffd24d', '#ff8a3d', '#ff4f6d'])(Math.max(0, Math.min(1, (t + 10) / 50)));
+const cityOf = name => C.CITIES.find(c => c.city === name);
+
+const DEFAULT_TV = [
+  { id: 'aje', name: 'Al Jazeera English', city: 'Doha', url: 'https://www.youtube.com/@aljazeeraenglish/live', cid: 'UCNye-wNBqNL5ZzHSJj3l8Bg' },
+  { id: 'dw', name: 'DW News', city: 'Berlin', url: 'https://www.youtube.com/@dwnews/live', cid: 'UCknLrEdhRCp1aegoMqRaCZg' },
+  { id: 'f24', name: 'France 24 English', city: 'Paris', url: 'https://www.youtube.com/@France24_en/live', cid: 'UCQfwfsi5VrQ8yKZ-UWmAEFg' },
+  { id: 'sky', name: 'Sky News', city: 'London', url: 'https://www.youtube.com/@SkyNews/live', cid: 'UCoMdktPbSTixAyNGwb-UYkQ' },
+  { id: 'bbg', name: 'Bloomberg Television', city: 'New York', url: 'https://www.youtube.com/@markets/live', cid: 'UCIALMKvObZNtJ6AmdCLP7Lg' },
+  { id: 'citizen', name: 'Citizen TV Kenya', city: 'Nairobi', url: 'https://www.youtube.com/@citizentvkenya/live' },
+  { id: 'ntv', name: 'NTV Kenya', city: 'Nairobi', url: 'https://www.youtube.com/@ntvkenya/live' },
+  { id: 'ktn', name: 'KTN News Kenya', city: 'Nairobi', url: 'https://www.youtube.com/@KTNNewsKE/live' },
+  { id: 'sabc', name: 'SABC News', city: 'Johannesburg', url: 'https://www.youtube.com/@SABCNews/live' },
+  { id: 'nhk', name: 'NHK World-Japan', city: 'Tokyo', url: 'https://www.youtube.com/@NHKWORLDJAPAN/live' },
+  { id: 'abcau', name: 'ABC News Australia', city: 'Sydney', url: 'https://www.youtube.com/@abcnewsaustralia/live' },
+  { id: 'nasa', name: 'NASA Live', city: 'Washington', url: 'https://www.youtube.com/@NASA/live' }
+];
+
+const S = {
+  mode: 'sim', posts: [], events: { quake: [], nature: [], news: [], weather: [] }, rules: [], alerts: store.get('alerts', []), watch: [],
+  arrivals: [], spark: new Array(30).fill(0), seenAlerts: 0,
+  layers: Object.assign({ emergency: true, posts: true, heat: true, quake: true, nature: true, news: false, weather: true, night: true, tv: true, sat: false, clouds: true }, store.get('layers', {})),
+  satStyle: store.get('satStyle', null), lens: '', size: store.get('mapSize', 'M'), pinned: store.get('pinned', true),
+  sel: null, sideTab: 'inspect', view: 'overview',
+  feed: { plats: new Set(), mood: 'any', country: '', q: '', topic: '', paused: false },
+  an: { country: '', win: 30, topic: '' }, logTopic: '',
+  tv: { list: store.get('tvList', DEFAULT_TV), wall: store.get('tvWall', ['aje', 'citizen', 'dw', 'nasa']), layout: store.get('tvLayout', 4) }
+};
+
+// ============================================================ data adapters
+const API = {
+  async boot() {
+    try {
+      const ctrl = new AbortController(); const t = setTimeout(() => ctrl.abort(), 2500);
+      const r = await fetch('api/health', { signal: ctrl.signal }); clearTimeout(t);
+      const j = await r.json();
+      if (j && j.ok) return this.live(j.mode);
+    } catch {}
+    return this.sim();
+  },
+  async live(mode) {
+    S.mode = mode === 'demo' ? 'server-sim' : 'live';
+    const g = u => fetch(u).then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j; });
+    const send = (u, m, b) => fetch(u, { method: m, headers: { 'Content-Type': 'application/json' }, body: b && JSON.stringify(b) }).then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j; });
+    const [feed, ev, rules, alerts, watch] = await Promise.all([g('api/feed?limit=2000'), g('api/events?layers=quake,nature,news,weather,emergency'), g('api/rules'), g('api/alerts'), g('api/watch')]);
+    S.posts = feed.reverse(); Object.assign(S.events, ev); S.rules = rules; S.alerts = alerts; S.watch = watch; S.seenAlerts = alerts.length;
+    const es = new EventSource('api/stream');
+    es.addEventListener('post', e => onPost(JSON.parse(e.data)));
+    es.addEventListener('alert', e => onAlert(JSON.parse(e.data)));
+    es.addEventListener('events', e => { const d = JSON.parse(e.data); S.events[d.layer] = d.items; if (d.layer === 'emergency') Radio.renderIncidents(); dirty(); });
+    es.addEventListener('source', () => { if (S.view === 'sources') renderSources(); });
+    es.addEventListener('radio', e => Radio.onTx(JSON.parse(e.data)));
+    es.addEventListener('intercom', e => Radio.onIntercom(JSON.parse(e.data)));
+    es.addEventListener('sdr', e => Radio.onSdr(JSON.parse(e.data)));
+    es.onerror = () => setMode('Link lost · retrying', true);
+    es.onopen = () => setMode(S.mode === 'live' ? 'Live uplink' : 'Server simulator', S.mode !== 'live');
+    this.saveRule = r => send('api/rules', 'POST', r).then(x => { const i = S.rules.findIndex(o => o.id === x.id); i >= 0 ? (S.rules[i] = x) : S.rules.push(x); });
+    this.deleteRule = id => send('api/rules?id=' + encodeURIComponent(id), 'DELETE').then(() => { S.rules = S.rules.filter(r => r.id !== id); });
+    this.setWatch = terms => send('api/watch', 'POST', { terms }).then(w => (S.watch = w));
+    this.brief = (c, t) => g('api/brief?' + new URLSearchParams(Object.fromEntries(Object.entries({ country: c, topic: t }).filter(([, v]) => v))));
+    this.sources = () => g('api/sources');
+    this.resolveTV = url => g('api/tv/resolve?url=' + encodeURIComponent(url));
+    const [radioLog, icLog] = await Promise.all([g('api/radio/log').catch(() => []), g('api/intercom').catch(() => [])]);
+    S.radioLog = radioLog; S.intercom = icLog;
+    this.sdrStatus = () => g('api/sdr/status');
+    this.tune = b => send('api/sdr/tune', 'POST', b);
+    this.sdrStop = () => send('api/sdr/stop', 'POST');
+    this.kiwi = (lat, lon, hz, mode) => g(`api/radio/kiwi?lat=${lat}&lon=${lon}&hz=${hz}&mode=${mode}`);
+    this.stations = (country, q) => g('api/radio/stations?' + new URLSearchParams(Object.fromEntries(Object.entries({ country, q }).filter(([, v]) => v))));
+    this.txStatus = () => g('api/tx/status');
+    this.transmit = (blob, hz, pin, operator) => fetch('api/tx', { method: 'POST', headers: { 'X-Freq': String(hz), 'X-Operator-Pin': pin, 'X-Operator': encodeURIComponent(operator || '') }, body: blob }).then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j; });
+    this.intercomText = (from, channel, text) => send('api/intercom', 'POST', { from, channel, text });
+    this.intercomVoice = (from, channel, blob, dur) => fetch('api/intercom', { method: 'POST', headers: { 'Content-Type': blob.type || 'audio/webm', 'X-From': encodeURIComponent(from), 'X-Channel': encodeURIComponent(channel), 'X-Duration': String(dur) }, body: blob }).then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j; });
+    this.server = true;
+    setMode(S.mode === 'live' ? 'Live uplink' : 'Server simulator', S.mode !== 'live');
+  },
+  sim() {
+    S.mode = 'sim';
+    const sim = ScavengeSim.create(C);
+    S.posts = sim.backfill(1200).map(C.enrich);
+    S.events = sim.events();
+    S.events.emergency = sim.incidents();
+    S.radioLog = []; S.intercom = [
+      { id: 'ic0', from: 'Field team Mombasa', channel: 'Field team', ts: Date.now() - 6 * 60000, text: 'Coast guard boat launched toward the fishing vessel. ETA 40 minutes.', simulated: true },
+      { id: 'ic1', from: 'Ops desk', channel: 'Ops', ts: Date.now() - 11 * 60000, text: 'Monitoring VHF 16 and 2182 kHz. Kenya Red Cross notified about Tana River flooding.', simulated: true }];
+    const pushTx = () => { const t = sim.transmission(); Radio.onTx(t); onPost(C.enrich({ id: 'radio_' + t.id, platform: 'radio', author: t.channel, channel: t.channel, text: t.text, ts: t.ts, lat: t.lat, lon: t.lon, simulated: true })); };
+    for (let i = 0; i < 4; i++) setTimeout(pushTx, 600 + i * 200);
+    setInterval(pushTx, 24000);
+    const replies = ['Copy, relaying to the coast guard.', 'Ambulance team on standby at the port.', 'Logistics: two water bowsers leaving Garissa depot.', 'Roger. Keep monitoring 2182.'];
+    this.intercomText = async (from, channel, text) => { const m = { id: 'ic' + Date.now(), from, channel, ts: Date.now(), text }; Radio.onIntercom(m); setTimeout(() => Radio.onIntercom({ id: 'ic' + Date.now() + 'r', from: 'Ops desk (simulated)', channel, ts: Date.now(), text: replies[Math.floor(Math.random() * replies.length)], simulated: true }), 3500); return m; };
+    this.intercomVoice = async (from, channel, blob, dur) => { const m = { id: 'ic' + Date.now(), from, channel, ts: Date.now(), audio: URL.createObjectURL(blob), duration: dur }; Radio.onIntercom(m); return m; };
+    S.rules = store.get('rules4', [
+      { id: 'r0', name: 'MAYDAY & distress calls', terms: ['mayday', 'pan-pan', 'sos', '7700', '"taking on water"', 'trapped'], categories: ['emergency'], platforms: [], country: '', mood: 'any', match: 'any', enabled: true, delivery: { inapp: true, sound: true }, hits: 0 },
+      { id: 'r1', name: 'Kenya floods & heavy rain', terms: ['flood', 'floods', '"heavy rain"', 'landslide'], categories: [], platforms: [], country: 'Kenya', mood: 'any', match: 'any', enabled: true, delivery: { inapp: true }, hits: 0 },
+      { id: 'r2', name: 'Conflict & war watch', terms: [], categories: ['conflict'], platforms: [], country: '', mood: 'any', match: 'any', enabled: true, delivery: { inapp: true }, hits: 0 },
+      { id: 'r3', name: 'Economic stress in Kenya', terms: [], categories: ['economy'], platforms: [], country: 'Kenya', mood: 'negative', match: 'any', enabled: true, delivery: { inapp: false }, hits: 0 },
+      { id: 'r4', name: 'AI talk on X & LinkedIn', terms: ['AI', '#AI'], categories: [], platforms: ['x', 'linkedin'], country: '', mood: 'any', match: 'any', enabled: true, delivery: { inapp: false }, hits: 0 }
+    ]);
+    S.watch = store.get('watch', ['#KenyaRains', 'Midterms2026', 'AI', 'COP31', 'ceasefire']);
+    const extra = ['Everyone in {city} is talking about {t} right now', '{t} is trending across {country} tonight, thoughts?', 'Breaking: fresh update on {t} out of {city}', 'Not happy with the latest on {t}. This is a problem for {city}', 'Great news about {t} for people in {city}!'];
+    setInterval(() => {
+      const batch = sim.burst();
+      const terms = [...S.watch, ...S.rules.flatMap(r => r.terms)].map(t => t.replace(/^"|"$/g, '').replace(/^#/, '')).filter(Boolean);
+      if (terms.length && Math.random() < 0.22) {
+        const p = sim.post(), t = terms[Math.floor(Math.random() * terms.length)];
+        p.text = extra[Math.floor(Math.random() * extra.length)].replace('{t}', t).replace('{city}', p.city).replace('{country}', p.country);
+        batch.push(p);
+      }
+      batch.forEach(p => onPost(C.enrich(p)));
+    }, 1200);
+    setInterval(() => { const e = sim.events(); S.events.news = e.news; if (Math.random() < 0.3) S.events.quake = e.quake; dirty(); }, 45000);
+    const saveRules = () => store.set('rules4', S.rules);
+    this.saveRule = async r => { r.id = r.id || 'r' + Date.now().toString(36); const i = S.rules.findIndex(o => o.id === r.id); if (i >= 0) S.rules[i] = Object.assign(S.rules[i], r); else S.rules.push(Object.assign({ hits: 0 }, r)); saveRules(); };
+    this.deleteRule = async id => { S.rules = S.rules.filter(r => r.id !== id); saveRules(); };
+    this.setWatch = async terms => { S.watch = terms; store.set('watch', terms); };
+    this.brief = async (c, t) => ({ engine: 'scavenge-stat (in-browser)', text: C.brief(S.posts, { country: c, topic: t, windowMin: S.an.win }) });
+    this.sources = async () => null;
+    this.server = false; this.simLocal = true;
+    setMode('Simulation', true);
+  }
+};
+function setMode(text, sim) { const m = $('#mode'); m.classList.toggle('sim', !!sim); m.lastElementChild.textContent = text; }
+
+function onPost(p) {
+  S.posts.push(p);
+  if (S.posts.length > 8000) S.posts.splice(0, S.posts.length - 8000);
+  S.arrivals.push(Date.now());
+  if (API.simLocal) for (const r of S.rules) { const hits = C.matchRule(r, p); if (hits) { r.hits = (r.hits || 0) + 1; onAlert({ id: 'al_' + p.id + r.id, ruleId: r.id, rule: r.name, hits, post: p, ts: Date.now() }); } }
+  if (API.simLocal && p.platform !== 'emergency') { const d = C.distress(p.text); if (d && d.severity !== 'info') addPostIncident(p, d); }
+  Feed.push(p); MapView.ping(p); dirty();
+}
+function addPostIncident(p, d) {
+  const inc = { id: 'pi_' + p.id, layer: 'emergency', kind: p.platform === 'radio' ? 'radio' : 'social', source: p.platform === 'radio' ? 'Radio · ' + (p.channel || p.author) : PLAT[p.platform]?.label || p.platform,
+    title: p.platform === 'radio' ? `${d.label} call on ${p.channel || p.author}` : `${d.label} post on ${(PLAT[p.platform]?.label || p.platform)}: “${p.text.slice(0, 70)}${p.text.length > 70 ? '…' : ''}”`, detail: p.text, lat: p.lat, lon: p.lon, ts: p.ts, severity: d.severity, country: p.country, postId: p.id, simulated: p.simulated };
+  S.events.emergency = [inc, ...S.events.emergency.filter(x => x.id !== inc.id)].slice(0, 120);
+  Radio.renderIncidents();
+}
+let lastSound = 0;
+function onAlert(a) {
+  S.alerts.unshift(a); if (S.alerts.length > 300) S.alerts.length = 300;
+  if (API.simLocal) store.set('alerts', S.alerts.slice(0, 120));
+  const rule = S.rules.find(r => r.id === a.ruleId) || {};
+  if (!API.simLocal) rule.hits = (rule.hits || 0) + 1;
+  const d = rule.delivery || {};
+  if (d.inapp) toast(a);
+  if (d.browser && 'Notification' in window && Notification.permission === 'granted') { try { new Notification('Scavenge · ' + a.rule, { body: a.post.text.slice(0, 160) }); } catch {} }
+  if (d.sound && Date.now() - lastSound > 4000) { lastSound = Date.now(); beep(); }
+  if (S.view === 'alerts') renderAlerts();
+  updateBadge();
+}
+function updateBadge() { const n = S.alerts.length - S.seenAlerts; const b = $('#alertBadge'); b.hidden = n <= 0 || S.view === 'alerts'; b.textContent = n > 99 ? '99+' : n; }
+let actx = null;
+function beep() { try { actx = actx || new AudioContext(); const o = actx.createOscillator(), g = actx.createGain(); o.type = 'square'; o.frequency.setValueAtTime(880, actx.currentTime); o.frequency.exponentialRampToValueAtTime(1760, actx.currentTime + 0.12); g.gain.setValueAtTime(0.05, actx.currentTime); g.gain.exponentialRampToValueAtTime(0.0001, actx.currentTime + 0.25); o.connect(g).connect(actx.destination); o.start(); o.stop(actx.currentTime + 0.26); } catch {} }
+function toast(a) {
+  const box = $('#toasts');
+  if (box.children.length >= (innerWidth < 700 ? 1 : 2)) box.firstElementChild.remove();
+  const el = document.createElement('div'); el.className = 'toast'; el.tabIndex = 0;
+  el.innerHTML = `<b>Alert · ${esc(a.rule)}</b><p><span class="mono" style="color:${PLAT[a.post.platform]?.color || '#fff'}">[${esc(PLAT[a.post.platform]?.label || a.post.platform)}]</span> ${highlight(a.post.text.slice(0, 180), a.hits)}</p>`;
+  el.onclick = () => { if (a.post.id) inspectPost(a.post); el.remove(); };
+  box.appendChild(el); setTimeout(() => el.remove(), 5000);
+}
+function highlight(text, terms) {
+  let h = esc(text);
+  const list = (terms || []).map(t => String(t).replace(/^"|"$/g, '')).filter(t => t.length > 1 && !TOPICS[t]).sort((a, b) => b.length - a.length);
+  if (!list.length) return h;
+  const re = new RegExp('(?<![\\p{L}\\p{N}])(' + list.map(t => esc(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')(?![\\p{L}\\p{N}])', 'giu');
+  return h.replace(re, '<mark>$1</mark>');
+}
+const moodTag = p => `<span class="tag ${p.mood === 'positive' ? 'pos' : p.mood === 'negative' ? 'neg' : 'neu'}">${esc(p.mood)}</span>`;
+const meter = v => `<span class="meter" title="sentiment ${v}"><b style="left:${v < 0 ? 50 + v * 50 : 50}%;width:${Math.abs(v) * 50}%;background:${v < 0 ? 'var(--crit)' : 'var(--ok)'}"></b></span>`;
+const topicTags = p => (p.topics || []).slice(0, 3).map(t => TOPICS[t] ? `<span class="ttag" style="color:${TOPICS[t].color}">${esc(TOPICS[t].label)}</span>` : '').join(' ');
+const inTopic = (p, t) => !t || (p.topics || []).includes(t);
+
+/** Topic chip row. multi=false → one selection (with "All"); multi=true → any number. */
+function topicChips(el, get, set, multi) {
+  const draw = () => {
+    const cur = get();
+    el.innerHTML = (multi ? '' : `<button type="button" class="tchip" data-t="" aria-pressed="${!cur}" style="color:var(--ion)"><i style="background:var(--ion)"></i>All topics</button>`) +
+      Object.entries(TOPICS).map(([k, t]) => `<button type="button" class="tchip" data-t="${k}" aria-pressed="${multi ? cur.includes(k) : cur === k}" style="color:${t.color}"><i style="background:${t.color}"></i>${esc(t.label)}</button>`).join('');
+  };
+  el.onclick = e => { const b = e.target.closest('.tchip'); if (!b) return; const k = b.dataset.t; if (multi) { const cur = get().slice(); const i = cur.indexOf(k); i >= 0 ? cur.splice(i, 1) : cur.push(k); set(cur); } else set(get() === k ? '' : k); draw(); };
+  draw(); return draw;
+}
+
+// ============================================================ watch terms & clock
+function renderWatch() { $('#watchChips').innerHTML = S.watch.map((t, i) => `<span class="chip">${esc(t)}<button data-i="${i}" aria-label="Stop watching ${esc(t)}">×</button></span>`).join(''); }
+$('#watchChips').addEventListener('click', e => { const i = e.target.dataset.i; if (i == null) return; const w = S.watch.slice(); w.splice(+i, 1); API.setWatch(w).then(renderWatch); });
+$('#watchForm').addEventListener('submit', e => { e.preventDefault(); const v = $('#watchInput').value.trim(); if (!v) return; if (!S.watch.includes(v)) API.setWatch([...S.watch, v]).then(() => { renderWatch(); Feed.reset(); }); $('#watchInput').value = ''; });
+function tick() { const d = new Date(); $('#clock').innerHTML = `<b>${d.toISOString().slice(11, 19)}</b> UTC<br>${d.toISOString().slice(0, 10)} · ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} local`; }
+setInterval(tick, 1000); tick();
+
+// ============================================================ telemetry strip
+let kpiSecond = 0;
+function renderKPIs() {
+  const now = Date.now();
+  S.arrivals = S.arrivals.filter(t => now - t < 60000);
+  const sec = Math.floor(now / 2000);
+  if (sec !== kpiSecond) { kpiSecond = sec; S.spark.push(S.arrivals.length); S.spark.shift(); }
+  const recent = S.posts.filter(p => now - p.ts < 30 * 60000);
+  const avg = recent.length ? recent.reduce((a, p) => a + (p.sentiment || 0), 0) / recent.length : 0;
+  const q = S.events.quake.filter(e => e.mag >= 4.5).length;
+  const al = S.alerts.filter(a => now - a.ts < 86400000).length;
+  const top = C.trends(S.posts, { windowMin: 30, limit: 1 })[0];
+  const emg = S.events.emergency || [], emgCrit = emg.filter(e => e.severity === 'critical').length, emgWarn = emg.filter(e => e.severity === 'warning').length;
+  const max = Math.max(1, ...S.spark);
+  const spark = `<svg class="spark" viewBox="0 0 120 22" preserveAspectRatio="none"><path d="M0 22 ${S.spark.map((v, i) => `L${i * 120 / 29} ${21 - v / max * 19}`).join(' ')} L120 22Z" fill="rgba(78,227,255,.15)"/><path d="${S.spark.map((v, i) => `${i ? 'L' : 'M'}${i * 120 / 29} ${21 - v / max * 19}`).join(' ')}" fill="none" stroke="#4ee3ff" stroke-width="1.2"/><circle cx="120" cy="${21 - S.spark[29] / max * 19}" r="2" fill="#4ee3ff"/></svg>`;
+  $('#kpis').innerHTML = [
+    ['Signals / min', fmt(S.arrivals.length), '', spark], ['Emergencies', fmt(emgCrit + emgWarn), `<small>${emgCrit} critical</small>`, '', emgCrit ? 'neg' : emgWarn ? 'warn' : ''],
+    ['Global mood', (avg >= 0 ? '+' : '') + avg.toFixed(2), '', '', avg > 0.08 ? 'pos' : avg < -0.08 ? 'neg' : ''],
+    ['Alerts · 24h', fmt(al), '', '', al ? 'warn' : ''], ['Quakes M4.5+', q, '<small>24h</small>', '', q ? 'warn' : ''],
+    ['Top trend', top ? esc(top.term) : '—', '']
+  ].map(([l, v, s, extra, cls]) => `<div class="kpi"><div class="label">${l}</div><div class="v ${cls || ''}" title="${typeof v === 'string' ? v : ''}">${v}${s}</div>${extra || ''}</div>`).join('');
+}
+
+// ============================================================ satellite mosaic (rendered in-browser)
+const SatRender = (() => {
+  const W = 1440, H = 720;
+  let terrain = null, clouds = null;
+  const DESERT = new Set(['Egypt', 'Libya', 'Algeria', 'Mali', 'Niger', 'Chad', 'Sudan', 'Mauritania', 'W. Sahara', 'Western Sahara', 'Saudi Arabia', 'Iran', 'Iraq', 'Oman', 'Yemen', 'Jordan', 'Syria', 'United Arab Emirates', 'Qatar', 'Kuwait', 'Afghanistan', 'Turkmenistan', 'Uzbekistan', 'Namibia', 'Botswana', 'Somalia', 'Djibouti', 'Eritrea', 'Australia', 'Pakistan', 'Tunisia', 'Morocco', 'Israel']);
+  const STEPPE = new Set(['Kazakhstan', 'Mongolia', 'Argentina', 'Turkey', 'Spain', 'Mexico', 'Kenya', 'Ethiopia', 'Tanzania', 'South Africa', 'Zimbabwe', 'Zambia', 'Angola', 'India', 'Nigeria', 'Senegal', 'Burkina Faso', 'S. Sudan', 'South Sudan']);
+  const ICE = new Set(['Greenland', 'Antarctica', 'Fr. S. Antarctic Lands']);
+  const BOREAL = new Set(['Russia', 'Canada', 'Iceland', 'Norway', 'Sweden', 'Finland', 'Estonia', 'Latvia']);
+  function biome(f) {
+    const n = f.properties.key, lat = d3.geoCentroid(f)[1], a = Math.abs(lat);
+    if (ICE.has(n) || a > 66) return [226, 233, 238];
+    if (DESERT.has(n)) return [184, 146, 92];
+    if (BOREAL.has(n)) return [58, 74, 48];
+    if (STEPPE.has(n)) return [120, 112, 62];
+    if (a < 12) return [30, 74, 36];
+    if (a < 22) return [92, 104, 50];
+    return a < 46 ? [70, 96, 48] : [60, 82, 50];
+  }
+  const hash = (i, j, s) => { const v = Math.sin(i * 127.1 + j * 311.7 + s * 74.7) * 43758.5453; return v - Math.floor(v); };
+  function vnoise(x, y, px, s) {
+    const i = Math.floor(x), j = Math.floor(y), fx = x - i, fy = y - j;
+    const u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy);
+    const i0 = ((i % px) + px) % px, i1 = (i0 + 1) % px;
+    const a = hash(i0, j, s), b = hash(i1, j, s), c = hash(i0, j + 1, s), d = hash(i1, j + 1, s);
+    return a + (b - a) * u + (c - a) * v + (a - b - c + d) * u * v;
+  }
+  function fbm(x, y, oct, base, s) { let t = 0, amp = 0.5, p = base, norm = 0; for (let o = 0; o < oct; o++) { t += amp * vnoise(x * p, y * p, p, s + o); norm += amp; amp *= 0.5; p *= 2; } return t / norm; }
+  function make(countries) {
+    if (terrain) return { terrain, clouds };
+    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const ctx = cv.getContext('2d');
+    const pr = d3.geoEquirectangular().scale(W / (2 * Math.PI)).translate([W / 2, H / 2]);
+    const path = d3.geoPath(pr, ctx);
+    ctx.fillStyle = 'rgb(9,36,66)'; ctx.fillRect(0, 0, W, H);
+    countries.forEach(f => { const [r, g, b] = biome(f); ctx.fillStyle = `rgb(${r},${g},${b})`; ctx.beginPath(); path(f); ctx.fill(); });
+    const img = ctx.getImageData(0, 0, W, H), d = img.data;
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const k = (y * W + x) * 4, u = x / W, v = y / H;
+      const n = fbm(u, v * 0.5, 4, 24, 1);
+      const ocean = d[k + 2] > 60 && d[k] < 20;
+      const m = ocean ? 0.78 + n * 0.45 : 0.62 + n * 0.75;
+      d[k] = Math.min(255, d[k] * m); d[k + 1] = Math.min(255, d[k + 1] * m); d[k + 2] = Math.min(255, d[k + 2] * (ocean ? m * 1.05 : m));
+    }
+    ctx.putImageData(img, 0, 0);
+    // coastline glow
+    ctx.strokeStyle = 'rgba(160,220,255,.18)'; ctx.lineWidth = 1.2; countries.forEach(f => { ctx.beginPath(); path(f); ctx.stroke(); });
+    terrain = cv.toDataURL('image/jpeg', 0.86);
+    const cc = document.createElement('canvas'); cc.width = W / 2; cc.height = H / 2;
+    const c2 = cc.getContext('2d'), ci = c2.createImageData(cc.width, cc.height), cd = ci.data;
+    for (let y = 0; y < cc.height; y++) {
+      const lat = 90 - y / cc.height * 180, band = 0.55 + 0.45 * Math.max(Math.exp(-((lat / 10) ** 2)), Math.exp(-(((Math.abs(lat) - 55) / 14) ** 2)));
+      for (let x = 0; x < cc.width; x++) {
+        const n = fbm(x / cc.width, y / cc.height * 0.5, 5, 10, 9);
+        const a = Math.max(0, Math.min(1, (n * band - 0.36) * 3.4));
+        const k = (y * cc.width + x) * 4; cd[k] = cd[k + 1] = cd[k + 2] = 245; cd[k + 3] = a * 215;
+      }
+    }
+    c2.putImageData(ci, 0, 0); clouds = cc.toDataURL('image/png');
+    return { terrain, clouds };
+  }
+  return { make };
+})();
+const SAT_STYLES = () => API.server
+  ? [['true', 'NASA true colour (yesterday)'], ['viirs', 'NASA VIIRS true colour'], ['night', 'NASA night lights'], ['render', 'Rendered Earth']]
+  : [['render', 'Rendered Earth (test site)']];
+
+// ============================================================ MAP
+const MapView = (() => {
+  const W = 1000, H = 500;
+  let svg, g, proj, path, zoom, k = 1, gEmg, countries = [], gCountries, gPosts, gQuake, gNature, gNews, gWx, gNight, gPing, gTV, img, gClouds, ready = false;
+  const tip = $('#tip');
+  function decode(geo) {
+    const scale = geo.UTF8Scale || 1024;
+    const dec = (c, off) => { const out = []; let px = off[0], py = off[1]; for (let i = 0; i < c.length; i += 2) { let x = c.charCodeAt(i) - 64, y = c.charCodeAt(i + 1) - 64; x = (x >> 1) ^ (-(x & 1)); y = (y >> 1) ^ (-(y & 1)); x += px; y += py; px = x; py = y; out.push([x / scale, y / scale]); } return out; };
+    if (geo.UTF8Encoding) geo.features.forEach(f => {
+      const gm = f.geometry, off = gm.encodeOffsets;
+      if (gm.type === 'Polygon') gm.coordinates = gm.coordinates.map((r, i) => typeof r === 'string' ? dec(r, off[i]) : r);
+      else if (gm.type === 'MultiPolygon') gm.coordinates = gm.coordinates.map((poly, i) => poly.map((r, j) => typeof r === 'string' ? dec(r, off[i][j]) : r));
+    });
+    geo.features.forEach(f => { if (d3.geoArea(f) > 2 * Math.PI) rewind(f.geometry); });
+    return geo;
+  }
+  function rewind(gm) { if (gm.type === 'Polygon') gm.coordinates.forEach(r => r.reverse()); else gm.coordinates.forEach(p => p.forEach(r => r.reverse())); }
+  const NAME_FIX = { 'United States of America': 'United States', 'Republic of Korea': 'Korea', 'S. Korea': 'Korea', 'Russian Federation': 'Russia', 'Democratic Republic of the Congo': 'Dem. Rep. Congo', 'United Republic of Tanzania': 'Tanzania', 'Türkiye': 'Turkey' };
+
+  function init() {
+    const el = $('#map');
+    svg = d3.select(el).insert('svg', ':first-child').attr('viewBox', `0 0 ${W} ${H}`).attr('preserveAspectRatio', 'xMidYMid meet').attr('role', 'img').attr('aria-label', 'World map of live signals and events');
+    proj = d3.geoEquirectangular().scale(W / (2 * Math.PI)).translate([W / 2, H / 2]);
+    path = d3.geoPath(proj);
+    g = svg.append('g');
+    img = g.append('image').attr('x', 0).attr('y', 0).attr('width', W).attr('height', H).attr('preserveAspectRatio', 'none').style('display', 'none');
+    g.append('path').datum(d3.geoGraticule10()).attr('class', 'grat').attr('d', path);
+    gCountries = g.append('g');
+    gClouds = g.append('g').style('display', 'none');
+    gNight = g.append('path').attr('class', 'night');
+    gWx = g.append('g').attr('class', 'wx'); gTV = g.append('g').attr('class', 'tvp');
+    gNews = g.append('g'); gNature = g.append('g'); gQuake = g.append('g'); gPosts = g.append('g'); gEmg = g.append('g'); gPing = g.append('g');
+    try { if (window.__WORLD) countries = decode(window.__WORLD).features; } catch (e) { console.warn('map geometry', e); countries = []; }
+    if (countries.length) {
+      countries.forEach(f => { f.properties.key = NAME_FIX[f.properties.name] || f.properties.name; });
+      gCountries.selectAll('path').data(countries).join('path').attr('class', 'country').attr('d', path)
+        .on('mousemove', (e, d) => showTip(e, countryTip(d.properties.key))).on('mouseleave', hideTip)
+        .on('click', (e, d) => select({ kind: 'country', key: d.properties.key }));
+    } else $('#hudTL').textContent = 'MAP GEOMETRY OFFLINE · SIGNALS ONLY';
+    zoom = d3.zoom().scaleExtent([1, 14]).translateExtent([[0, 0], [W, H]]).on('zoom', e => { g.attr('transform', e.transform); const nk = e.transform.k; if (Math.abs(nk - k) > 0.05) { k = nk; render(); } });
+    svg.call(zoom);
+    svg.on('mousemove.hud', e => { const [mx, my] = d3.pointer(e, g.node()); const ll = proj.invert([mx, my]); if (ll) $('#hudBR').textContent = `LAT ${ll[1].toFixed(2)}  LON ${ll[0].toFixed(2)}  ZOOM ×${k.toFixed(1)}`; });
+    $('#zin').onclick = () => svg.transition().duration(300).call(zoom.scaleBy, 1.6);
+    $('#zout').onclick = () => svg.transition().duration(300).call(zoom.scaleBy, 1 / 1.6);
+    $('#zreset').onclick = () => svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity);
+    ready = true;
+    renderLayersPanel(); renderLegend();
+  }
+  function focus(lon, lat, scale) { const [x, y] = proj([lon, lat]); const s = scale || 4; svg.transition().duration(700).call(zoom.transform, d3.zoomIdentity.translate(W / 2 - x * s, H / 2 - y * s).scale(s)); }
+  function showTip(e, html) { const r = $('#map').getBoundingClientRect(); tip.innerHTML = html; tip.hidden = false; let x = e.clientX - r.left + 14, y = e.clientY - r.top + 14; if (x + 280 > r.width) x = e.clientX - r.left - 290; if (y + 120 > r.height) y = e.clientY - r.top - 110; tip.style.left = Math.max(4, x) + 'px'; tip.style.top = Math.max(4, y) + 'px'; }
+  function hideTip() { tip.hidden = true; }
+  function countryTip(name) { const ps = S.posts.filter(p => p.country === name && Date.now() - p.ts < 3600000 && inTopic(p, S.lens)); const avg = ps.length ? ps.reduce((a, p) => a + p.sentiment, 0) / ps.length : 0; return `<b>${esc(name)}</b><br><span class="mono">${ps.length} posts${S.lens ? ' · ' + esc(TOPICS[S.lens].label) : ''} · last hour · mood ${avg >= 0 ? '+' : ''}${avg.toFixed(2)}</span><br><span style="color:var(--dim)">Click to inspect</span>`; }
+
+  const LAYERS = [['emergency', 'Emergencies & SOS', '#ff3b3b'], ['posts', 'Social signals', '#4ee3ff'], ['heat', 'Activity heat', '#2b7fa0'], ['quake', 'Earthquakes (USGS)', '#ff4f6d'], ['nature', 'Natural events (NASA)', '#ff6a3d'],
+    ['news', 'News hotspots (GDELT)', '#ffa94d'], ['weather', 'Weather (Open-Meteo)', '#3ff2a4'], ['tv', 'Live TV channels', '#ff4f6a'], ['night', 'Day / night', '#334']];
+  function renderLayersPanel() {
+    const styles = SAT_STYLES();
+    if (!S.satStyle || !styles.some(s => s[0] === S.satStyle)) S.satStyle = styles[0][0];
+    $('#layersBody').innerHTML = LAYERS.map(([id, label, c]) => `<label><input type="checkbox" data-layer="${id}" ${S.layers[id] ? 'checked' : ''}><i style="background:${c}"></i>${label}</label>`).join('')
+      + `<div class="label sub">Satellite</div><label><input type="checkbox" data-layer="sat" ${S.layers.sat ? 'checked' : ''}><i style="background:#9be15d"></i>Satellite view</label>
+      <select id="satStyle" aria-label="Satellite imagery">${styles.map(([v, l]) => `<option value="${v}" ${v === S.satStyle ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <label><input type="checkbox" data-layer="clouds" ${S.layers.clouds ? 'checked' : ''}><i style="background:#eef"></i>Cloud cover (rendered)</label>
+      <div class="label sub">Topic lens</div><select id="lens" aria-label="Topic lens"><option value="">All topics</option>${Object.entries(TOPICS).map(([k, t]) => `<option value="${k}" ${S.lens === k ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}</select>`;
+    $('#layersBody').onchange = e => {
+      if (e.target.id === 'satStyle') { S.satStyle = e.target.value; store.set('satStyle', S.satStyle); img.attr('href', null); }
+      else if (e.target.id === 'lens') { S.lens = e.target.value; renderSidePosts(); }
+      else { S.layers[e.target.dataset.layer] = e.target.checked; store.set('layers', S.layers); }
+      syncToolbar(); render(); renderEvents();
+    };
+  }
+  function renderLegend() { $('#legend').innerHTML = Object.values(PLAT).map(p => `<span><i style="background:${p.color}"></i>${p.label}</span>`).join(''); }
+  function subsolar() { const now = new Date(), start = Date.UTC(now.getUTCFullYear(), 0, 0); const day = (now - start) / 86400000; const decl = -23.44 * Math.cos(2 * Math.PI / 365 * (day + 10)); const hrs = now.getUTCHours() + now.getUTCMinutes() / 60; return [(12 - hrs) * 15, decl]; }
+
+  let rendering = false;
+  function applySat() {
+    const on = S.layers.sat;
+    $('#map').classList.toggle('sat-on', on);
+    if (!on) { img.style('display', 'none'); gClouds.style('display', 'none'); return; }
+    img.style('display', null);
+    const useRender = S.satStyle === 'render' || !API.server;
+    if (useRender) {
+      if (!img.attr('href') && countries.length && !rendering) {
+        rendering = true; $('#hudTL').textContent = 'COMPOSITING ORBITAL MOSAIC…';
+        setTimeout(() => { const m = SatRender.make(countries); img.attr('href', m.terrain); gClouds.selectAll('image').data([0, 1]).join('image').attr('href', m.clouds).attr('x', d => d * W).attr('y', 0).attr('width', W).attr('height', H).attr('preserveAspectRatio', 'none').attr('opacity', 0.85); gClouds.attr('class', 'clouds'); rendering = false; $('#hudTL').textContent = 'RENDERED EARTH · SIMULATED IMAGERY'; }, 30);
+      }
+    } else {
+      const want = 'api/satellite?layer=' + S.satStyle;
+      if (img.attr('href') !== want) { img.attr('href', want); $('#hudTL').textContent = 'NASA GIBS · ' + (S.satStyle === 'night' ? 'BLACK MARBLE NIGHT LIGHTS' : 'DAILY TRUE-COLOUR MOSAIC'); }
+      if (!gClouds.selectAll('image').size() && countries.length) { const m = SatRender.make(countries); gClouds.selectAll('image').data([0, 1]).join('image').attr('href', m.clouds).attr('x', d => d * W).attr('width', W).attr('height', H).attr('preserveAspectRatio', 'none').attr('opacity', 0.8); gClouds.attr('class', 'clouds'); }
+    }
+    gClouds.style('display', S.layers.clouds && (useRender || S.satStyle !== 'night') ? null : 'none');
+  }
+
+  function render() {
+    if (!ready) return;
+    const now = Date.now();
+    applySat();
+    const lensed = S.lens ? S.posts.filter(p => inTopic(p, S.lens)) : S.posts;
+    if (countries.length) {
+      const counts = new Map();
+      if (S.layers.heat) lensed.forEach(p => { if (p.country && now - p.ts < 3600000) counts.set(p.country, (counts.get(p.country) || 0) + 1); });
+      const max = Math.max(1, ...counts.values());
+      const col = d3.interpolateRgb('#0f1d2e', S.lens ? TOPICS[S.lens].color : '#1f9cc4');
+      gCountries.selectAll('path').attr('fill', d => { const c = counts.get(d.properties.key); return c ? col(Math.sqrt(c / max) * (S.lens ? 0.75 : 1)) : null; })
+        .classed('sel', d => S.sel && S.sel.kind === 'country' && S.sel.key === d.properties.key);
+    }
+    if (S.layers.night) { const [lon, lat] = subsolar(); gNight.attr('d', path(d3.geoCircle().center([lon + 180, -lat]).radius(90)())).style('display', null); } else gNight.style('display', 'none');
+    const r = v => v / Math.sqrt(k);
+    const selId = S.sel && S.sel.kind === 'post' ? S.sel.item.id : null;
+    const pts = S.layers.posts ? lensed.filter(p => p.lat != null).slice(-700) : [];
+    gPosts.selectAll('circle').data(pts, d => d.id).join('circle').attr('class', 'pt')
+      .attr('cx', d => proj([d.lon, d.lat])[0]).attr('cy', d => proj([d.lon, d.lat])[1]).attr('r', d => r(d.id === selId ? 4 : 1.9))
+      .attr('fill', d => PLAT[d.platform]?.color || '#fff').attr('fill-opacity', d => Math.max(0.3, 1 - (now - d.ts) / 3600000))
+      .attr('stroke', d => d.id === selId ? '#ffa94d' : 'none').attr('stroke-width', r(1))
+      .on('mousemove', (e, d) => showTip(e, `<b>${esc(PLAT[d.platform]?.label)}</b> · ${esc(d.city || d.country || '')}<br>${esc(d.text.slice(0, 140))}<br><span style="color:var(--dim)">Click to read the post</span>`)).on('mouseleave', hideTip)
+      .on('click', (e, d) => { e.stopPropagation(); inspectPost(d, true); });
+    const qg = gQuake.selectAll('g').data(S.layers.quake ? S.events.quake : [], d => d.id).join(enter => { const e = enter.append('g').attr('class', 'pt'); e.append('circle').attr('class', 'core'); e.append('circle').attr('class', 'quake-ring'); return e; });
+    qg.attr('transform', d => `translate(${proj([d.lon, d.lat])})`)
+      .on('mousemove', (e, d) => showTip(e, `<b>${esc(d.title)}</b><br><span class="mono">depth ${Math.round(d.depth)} km · ${ago(d.ts)} ago</span>`)).on('mouseleave', hideTip)
+      .on('click', (e, d) => select({ kind: 'event', item: d }));
+    qg.select('.core').attr('r', d => r(Math.max(1.2, (d.mag - 1.5) * 1.3))).attr('fill', d => d.mag >= 6 ? '#ff4f6d' : d.mag >= 4.5 ? '#ff8a5c' : '#ffb38a').attr('fill-opacity', 0.75).attr('stroke', '#ff4f6d').attr('stroke-width', r(0.4));
+    qg.select('.quake-ring').attr('r', d => r(Math.max(1.2, (d.mag - 1.5) * 1.3))).attr('stroke-width', r(0.5)).style('display', d => d.mag >= 4.5 ? null : 'none');
+    const sym = d3.symbol();
+    const shape = c => c === 'wildfires' || c === 'volcanoes' ? d3.symbolTriangle : c === 'severeStorms' ? d3.symbolStar : c === 'floods' ? d3.symbolDiamond : d3.symbolSquare;
+    gNature.selectAll('path').data(S.layers.nature ? S.events.nature : [], d => d.id).join('path').attr('class', 'pt')
+      .attr('d', d => sym.type(shape(d.category)).size(r(22) * r(1))()).attr('transform', d => `translate(${proj([d.lon, d.lat])})`)
+      .attr('fill', d => (NAT[d.category] || ['#ccd'])[0]).attr('stroke', '#02060c').attr('stroke-width', r(0.4))
+      .on('mousemove', (e, d) => showTip(e, `<b>${esc(d.title)}</b><br><span class="mono">${esc((NAT[d.category] || [, d.category])[1])} · ${ago(d.ts)} ago</span>`)).on('mouseleave', hideTip)
+      .on('click', (e, d) => select({ kind: 'event', item: d }));
+    gNews.selectAll('rect').data(S.layers.news ? S.events.news : [], d => d.id).join('rect').attr('class', 'pt')
+      .each(function (d) { const s = r(2 + Math.sqrt(d.count || 1) * 0.7), [x, y] = proj([d.lon, d.lat]); d3.select(this).attr('x', x - s / 2).attr('y', y - s / 2).attr('width', s).attr('height', s); })
+      .attr('fill', 'rgba(255,169,77,.18)').attr('stroke', '#ffa94d').attr('stroke-width', r(0.5))
+      .on('mousemove', (e, d) => showTip(e, `<b>${esc(d.title)}</b><br><span class="mono">${d.count || ''} reports · last 24h</span>`)).on('mouseleave', hideTip)
+      .on('click', (e, d) => select({ kind: 'event', item: d }));
+    let wx = S.layers.weather ? S.events.weather : [];
+    if (k < 2.2) { const seen = new Set(); wx = wx.filter(w => !seen.has(w.country) && seen.add(w.country)); }
+    const wg = gWx.selectAll('g').data(wx, d => d.id).join(enter => { const e = enter.append('g').attr('class', 'pt'); e.append('circle'); e.append('text'); return e; });
+    wg.attr('transform', d => `translate(${proj([d.lon, d.lat])})`).on('click', (e, d) => select({ kind: 'weather', item: d }))
+      .on('mousemove', (e, d) => showTip(e, `<b>${esc(d.city)}</b> · ${esc(WMO(d.code))}<br><span class="mono">${d.temp}°C · wind ${d.wind} km/h · rain ${d.precip} mm</span>`)).on('mouseleave', hideTip);
+    wg.select('circle').attr('r', r(1)).attr('fill', d => tempColor(d.temp));
+    wg.select('text').attr('x', r(2.2)).attr('y', r(2.4)).style('font-size', r(7) + 'px').style('stroke-width', r(2.2) + 'px').attr('fill', d => tempColor(d.temp)).text(d => Math.round(d.temp) + '°');
+    // emergencies: aircraft glyph (rotated to track), pulsing ring for distress calls, hexagon for disasters, triangle for weather warnings
+    const emg = S.layers.emergency ? (S.events.emergency || []).filter(e => e.lat != null) : [];
+    const PLANE = 'M0 -5 L1 -1.5 L5 0.5 L5 1.4 L1 0.6 L0.8 3.6 L2 4.6 L2 5.2 L0 4.6 L-2 5.2 L-2 4.6 L-0.8 3.6 L-1 0.6 L-5 1.4 L-5 0.5 L-1 -1.5 Z';
+    const HEX = 'M0 -4.2 L3.6 -2.1 L3.6 2.1 L0 4.2 L-3.6 2.1 L-3.6 -2.1 Z', TRI = 'M0 -4.4 L4 3 L-4 3 Z';
+    const eg = gEmg.selectAll('g').data(emg, d => d.id).join(enter => { const e = enter.append('g').attr('class', 'pt'); e.append('circle').attr('class', 'quake-ring'); e.append('path'); return e; });
+    eg.attr('transform', d => `translate(${proj([d.lon, d.lat])}) scale(${1.1 / Math.sqrt(k)})`)
+      .on('mousemove', (e, d) => showTip(e, `<b style="color:${d.severity === 'critical' ? 'var(--crit)' : 'var(--plasma)'}">${esc(d.title)}</b><br><span class="mono">${esc(d.source || '')} · ${ago(d.ts)} ago</span>`)).on('mouseleave', hideTip)
+      .on('click', (e, d) => { e.stopPropagation(); select({ kind: 'incident', item: d }); });
+    eg.select('.quake-ring').attr('r', 4).attr('stroke-width', 0.8).style('stroke', d => d.severity === 'critical' ? '#ff3b3b' : '#ffa94d').style('display', d => d.severity === 'critical' ? null : 'none');
+    eg.select('path').attr('d', d => d.kind === 'aircraft' ? PLANE : d.kind === 'disaster' ? HEX : d.kind === 'weather' ? TRI : 'M-1 -4 H1 V-1 H4 V1 H1 V4 H-1 V1 H-4 V-1 H-1 Z')
+      .attr('transform', d => d.kind === 'aircraft' && d.track != null ? `rotate(${d.track})` : null)
+      .attr('fill', d => d.kind === 'aircraft' ? '#fff' : d.severity === 'critical' ? '#ff3b3b' : '#ffa94d').attr('stroke', d => d.kind === 'aircraft' ? (d.severity === 'critical' ? '#ff3b3b' : '#ffa94d') : '#1a0308').attr('stroke-width', d => d.kind === 'aircraft' ? 1.1 : 0.6);
+    // live tv pins (channels in the same city fan out slightly)
+    const seenCity = {};
+    const tvs = S.layers.tv ? S.tv.list.map(ch => { const c = cityOf(ch.city); if (!c) return null; const n = seenCity[c.city] = (seenCity[c.city] || 0) + 1; return { ch, lon: c.lon + (n - 1) * 1.6, lat: c.lat - 1.8 }; }).filter(Boolean) : [];
+    const tg = gTV.selectAll('g').data(tvs, d => d.ch.id).join(enter => { const e = enter.append('g').attr('class', 'pt'); e.append('rect'); e.append('path'); return e; });
+    tg.attr('transform', d => `translate(${proj([d.lon, d.lat])}) scale(${1 / Math.sqrt(k)})`)
+      .on('mousemove', (e, d) => showTip(e, `<b>${esc(d.ch.name)}</b> · ${esc(d.ch.city)}<br><span style="color:var(--dim)">Live TV — click to watch</span>`)).on('mouseleave', hideTip)
+      .on('click', (e, d) => { e.stopPropagation(); TV.play(d.ch.id); });
+    tg.select('rect').attr('x', -4).attr('y', -3).attr('width', 8).attr('height', 6).attr('rx', 1).attr('fill', '#1a0610').attr('stroke', '#ff4f6a').attr('stroke-width', 0.7);
+    tg.select('path').attr('d', 'M-1.2 -1.6 L2 0 L-1.2 1.6 Z').attr('fill', '#ff4f6a');
+  }
+  let pingBudget = 0;
+  function ping(p) {
+    if (!ready || !S.layers.posts || p.lat == null || document.hidden || !inTopic(p, S.lens)) return;
+    const now = Date.now(); if (now - pingBudget < 250) return; pingBudget = now;
+    const [x, y] = proj([p.lon, p.lat]);
+    const c = gPing.append('circle').attr('class', 'ping').attr('cx', x).attr('cy', y).attr('r', 1.6 / Math.sqrt(k)).attr('stroke', PLAT[p.platform]?.color || '#fff');
+    setTimeout(() => c.remove(), 1500);
+  }
+  function center() { const t = d3.zoomTransform(svg.node()); const ll = proj.invert(t.invert([W / 2, H / 2])); return { lon: ll[0], lat: ll[1] }; }
+  return { init, render, focus, ping, center };
+})();
+
+// ============================================================ map toolbar: satellite · fullscreen · size · pin
+const SIZES = { S: '34vh', M: '48vh', L: '66vh' };
+function syncToolbar() {
+  $('#tbSat').setAttribute('aria-pressed', S.layers.sat);
+  const satBox = document.querySelector('[data-layer="sat"]'); if (satBox) satBox.checked = S.layers.sat;
+  document.documentElement.style.setProperty('--mapH', SIZES[S.size]);
+  $('#tbSizeT').textContent = 'Size ' + S.size;
+  $('#dock').classList.toggle('pinned', S.pinned);
+  $('#tbPin').setAttribute('aria-pressed', S.pinned); $('#tbPin').querySelector('.t').textContent = S.pinned ? 'Pinned' : 'Pin map';
+  const fs = !!document.fullscreenElement || $('#deck').classList.contains('fs');
+  $('#tbFull').setAttribute('aria-pressed', fs); $('#tbFull').querySelector('.t').textContent = fs ? 'Exit full screen' : 'Full screen';
+}
+$('#tbSat').onclick = () => { S.layers.sat = !S.layers.sat; store.set('layers', S.layers); syncToolbar(); MapView.render(); };
+$('#tbSize').onclick = () => { S.size = { S: 'M', M: 'L', L: 'S' }[S.size]; store.set('mapSize', S.size); syncToolbar(); };
+$('#tbPin').onclick = () => { S.pinned = !S.pinned; store.set('pinned', S.pinned); syncToolbar(); };
+$('#tbFull').onclick = async () => {
+  const deck = $('#deck');
+  if (document.fullscreenElement) { await document.exitFullscreen().catch(() => {}); }
+  else if (deck.classList.contains('fs')) deck.classList.remove('fs');
+  else { try { if (!deck.requestFullscreen) throw 0; await deck.requestFullscreen(); } catch { deck.classList.add('fs'); } }
+  syncToolbar();
+};
+document.addEventListener('fullscreenchange', syncToolbar);
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#deck').classList.contains('fs')) { $('#deck').classList.remove('fs'); syncToolbar(); } });
+$('#layersBtn').onclick = () => { const b = $('#layersBody'); b.hidden = !b.hidden; $('#layersBtn').setAttribute('aria-expanded', !b.hidden); $('#layersBtn span').textContent = b.hidden ? '▸' : '▾'; };
+// On narrow screens the side panel leaves the docked deck and sits at the top of the page content.
+const narrow = matchMedia('(max-width: 1080px)');
+function placeSide() { const side = $('#side'); if (narrow.matches) { $('#sideSlot').appendChild(side); } else $('#deck').appendChild(side); if (narrow.matches && !$('#layersBody').hidden && innerWidth < 700) $('#layersBtn').click(); }
+narrow.addEventListener('change', placeSide);
+
+// ============================================================ side panel: inspect · posts · events
+function sideTab(t) { S.sideTab = t; $$('.stabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.p === t)); ['inspect', 'posts', 'events'].forEach(p => ($('#p-' + p).hidden = p !== t)); if (t === 'posts') renderSidePosts(); if (t === 'events') renderEvents(); }
+$('.stabs').onclick = e => { const b = e.target.closest('button'); if (b) sideTab(b.dataset.p); };
+function select(s) { S.sel = s; sideTab('inspect'); renderDetail(); MapView.render(); if (narrow.matches) { const side = $('#side'); side.style.scrollMarginTop = (S.pinned ? $('#dock').offsetHeight + 8 : 8) + 'px'; side.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }
+function inspectPost(p, fromMap) { select({ kind: 'post', item: p }); if (!fromMap && p.lat != null) MapView.focus(p.lon, p.lat, 3.5); }
+const postIndex = new Map();
+function postRows(list) {
+  return list.map(p => { postIndex.set(p.id, p); const pl = PLAT[p.platform] || { label: p.platform, color: '#fff' };
+    return `<button class="prow" data-pid="${esc(p.id)}"><span style="background:${pl.color}"></span><span><span class="m"><b style="color:${pl.color}">${esc(pl.label)}</b><span>${esc(p.author)}</span><span>${ago(p.ts)}</span>${p.city ? `<span>⌖ ${esc(p.city)}</span>` : ''}</span><span class="t">${esc(p.text)}</span></span></button>`; }).join('') || '<p class="empty">No posts yet.</p>';
+}
+document.addEventListener('click', e => { const b = e.target.closest('[data-pid]'); if (!b) return; const p = postIndex.get(b.dataset.pid); if (p) inspectPost(p); });
+
+function renderDetail() {
+  const el = $('#p-inspect'), s = S.sel;
+  const close = '<button class="btn sm" id="dClose">Clear</button>';
+  if (!s) {
+    const tr = C.trends(S.posts, { windowMin: 30, limit: 5 });
+    const tb = C.topicBreakdown(S.posts.filter(p => Date.now() - p.ts < 3600000)).slice(0, 5);
+    el.innerHTML = `<header><h2>Global picture</h2><span class="label">last 30 min</span></header>
+      <p class="note" style="margin-top:0">Click any country, signal dot, quake, storm, city or TV pin on the map to inspect it.</p>
+      <div class="label sub">Top topics</div><div class="bars">${tb.map(t => `<div class="barrow click" data-lens="${t.key}"><span style="color:${TOPICS[t.key].color}">${esc(t.label)}</span><span class="track"><b style="width:${t.count / Math.max(1, tb[0].count) * 100}%;background:${TOPICS[t.key].color}"></b></span><span class="n">${t.count}</span></div>`).join('')}</div>
+      <div class="label sub">Trending terms</div><div class="bars">${tr.map(t => `<div class="barrow click" data-term="${esc(t.term)}"><span>${esc(t.term)}</span><span class="track"><b style="width:${(t.count / tr[0].count) * 100}%"></b></span><span class="n">${t.count}</span></div>`).join('') || '<p class="empty">Gathering signal…</p>'}</div>`;
+    el.querySelectorAll('[data-term]').forEach(b => (b.onclick = () => select({ kind: 'trend', term: b.dataset.term })));
+    el.querySelectorAll('[data-lens]').forEach(b => (b.onclick = () => { S.lens = b.dataset.lens; $('#lens').value = S.lens; MapView.render(); sideTab('posts'); }));
+    return;
+  }
+  if (s.kind === 'country') {
+    const ps = S.posts.filter(p => p.country === s.key);
+    const tr = C.trends(ps, { windowMin: 60, limit: 5 });
+    const avg = ps.length ? ps.reduce((a, p) => a + p.sentiment, 0) / ps.length : 0;
+    const cities = C.breakdown(ps, 'city').slice(0, 4);
+    const tb = C.topicBreakdown(ps).filter(t => t.count).slice(0, 5);
+    const wx = S.events.weather.filter(w => w.country === s.key).slice(0, 2);
+    el.innerHTML = `<header><h2>Country</h2>${close}</header><p class="big">${esc(s.key)}</p>
+      <dl><dt>Posts</dt><dd class="mono">${ps.length}</dd><dt>Mood</dt><dd>${meter(avg)} <span class="mono">${avg >= 0 ? '+' : ''}${avg.toFixed(2)}</span></dd>
+      <dt>Hot cities</dt><dd>${cities.map(c => `${esc(c.key)} <span class="mono" style="color:var(--dim)">${c.count}</span>`).join(', ') || '—'}</dd>
+      <dt>Weather</dt><dd>${wx.map(w => `${esc(w.city)} <span class="mono" style="color:${tempColor(w.temp)}">${Math.round(w.temp)}°</span> ${esc(WMO(w.code))}`).join('<br>') || '—'}</dd>
+      <dt>Trending</dt><dd>${tr.map(t => esc(t.term)).join(' · ') || 'Not enough signal yet'}</dd></dl>
+      <div class="label sub">Topic mix</div><div class="bars">${tb.map(t => `<div class="barrow"><span style="color:${TOPICS[t.key].color}">${esc(t.label)}</span><span class="track"><b style="width:${t.count / tb[0].count * 100}%;background:${TOPICS[t.key].color}"></b></span><span class="n">${t.count}</span></div>`).join('') || '<p class="empty">—</p>'}</div>
+      <div class="row" style="margin-top:12px"><button class="btn primary sm" id="dAnalyse">Analyse</button><button class="btn sm" id="dFeed">All posts in feed</button></div>
+      <div class="label sub">Latest posts</div>${postRows(ps.slice(-12).reverse())}`;
+    $('#dAnalyse').onclick = () => { S.an.country = s.key; location.hash = 'analytics'; };
+    $('#dFeed').onclick = () => { S.feed.country = s.key; $('#fCountry').value = s.key; location.hash = 'feeds'; Feed.reset(); };
+  } else if (s.kind === 'post') {
+    const p = s.item, pl = PLAT[p.platform] || { label: p.platform, color: '#fff' };
+    const key = (p.terms || []).find(t => t.includes(' ')) || (p.terms || [])[0];
+    const related = S.posts.filter(o => o.id !== p.id && ((p.city && o.city === p.city) || (key && (o.terms || []).includes(key)))).slice(-8).reverse();
+    el.innerHTML = `<header><h2>Post</h2>${close}</header>
+      <div class="post" style="border:0;padding:0;background:none;cursor:default;animation:none"><span style="background:${pl.color}"></span><div>
+        <div class="meta"><span class="pl" style="color:${pl.color}">${esc(pl.label)}</span><span class="who">${esc(p.author)}</span><span title="${new Date(p.ts).toISOString()}">${ago(p.ts)} ago</span>${p.simulated ? '<span class="tag sim">simulated</span>' : ''}</div>
+        <p class="ptext">${highlight(p.text, S.watch)}</p>
+        <div class="row">${moodTag(p)} ${meter(p.sentiment)} ${topicTags(p)}</div></div></div>
+      <dl style="margin-top:12px"><dt>Location</dt><dd>${esc([p.city, p.country].filter(Boolean).join(', ') || 'Unknown')} <span class="mono" style="color:var(--dim)">(${esc(p.geoSource || '—')})</span></dd>
+      ${p.channel ? `<dt>Channel</dt><dd>${esc(p.channel)}</dd>` : ''}
+      ${p.metrics ? `<dt>Engagement</dt><dd class="mono">${Object.entries(p.metrics).filter(([, v]) => v != null).map(([k, v]) => esc(k) + ' ' + fmt(v)).join(' · ')}</dd>` : ''}
+      <dt>Key terms</dt><dd>${(p.terms || []).slice(0, 6).map(esc).join(' · ') || '—'}</dd></dl>
+      <div class="row" style="margin-top:12px">${p.url ? `<a class="btn sm" href="${esc(p.url)}" target="_blank" rel="noopener">Open original ↗</a>` : ''}<button class="btn sm" id="dSimilar">Find similar</button><button class="btn sm" id="dAlert">Alert me on this</button></div>
+      <div class="label sub">Related posts</div>${postRows(related)}`;
+    $('#dSimilar').onclick = () => { S.feed.q = (key || '').replace(/^#/, ''); $('#fQ').value = S.feed.q; location.hash = 'feeds'; Feed.reset(); };
+    $('#dAlert').onclick = () => { location.hash = 'alerts'; resetForm(); $('#rName').value = (key || p.topics?.[0] || 'New rule').replace(/^#/, ''); $('#rTerms').value = key || ''; S.formTopics = (p.topics || []).slice(0, 1); drawFormTopics(); $('#rName').focus(); };
+  } else if (s.kind === 'trend') {
+    const ps = S.posts.filter(p => (p.terms || []).includes(s.term) || p.text.toLowerCase().includes(s.term.replace(/^#/, '')));
+    const row = C.trends(S.posts, { windowMin: S.an.win, limit: 60, minCount: 1 }).find(t => t.term === s.term);
+    const ctry = C.breakdown(ps, 'country').slice(0, 4);
+    el.innerHTML = `<header><h2>Trend</h2>${close}</header><p class="big">${esc(s.term)}</p>
+      <dl><dt>Mentions</dt><dd class="mono">${ps.length}${row ? ` · ${row.previous ? (row.velocity >= 0 ? '▲' : '▼') + Math.abs(Math.round(row.velocity * 100)) + '%' : 'new'}` : ''}</dd>
+      <dt>Tone</dt><dd>${row ? meter(row.sentiment) : '—'}</dd><dt>Platforms</dt><dd>${row ? row.platforms.map(x => esc(PLAT[x]?.label || x)).join(', ') : '—'}</dd>
+      <dt>Where</dt><dd>${ctry.map(c => `${esc(c.key)} <span class="mono" style="color:var(--dim)">${c.count}</span>`).join(', ') || '—'}</dd></dl>
+      <div class="row" style="margin-top:12px"><button class="btn sm" id="dWatchT">Watch this</button><button class="btn sm" id="dFeedT">Open in feed</button></div>
+      <div class="label sub">Posts</div>${postRows(ps.slice(-15).reverse())}`;
+    $('#dWatchT').onclick = () => { if (!S.watch.includes(s.term)) API.setWatch([...S.watch, s.term]).then(renderWatch); };
+    $('#dFeedT').onclick = () => { S.feed.q = s.term.replace(/^#/, ''); $('#fQ').value = S.feed.q; location.hash = 'feeds'; Feed.reset(); };
+  } else if (s.kind === 'event') {
+    const e = s.item;
+    el.innerHTML = `<header><h2>${e.layer === 'quake' ? 'Earthquake' : e.layer === 'news' ? 'News hotspot' : esc((NAT[e.category] || [, 'Natural event'])[1])}</h2>${close}</header>
+      <p class="big">${esc(e.title)}</p><dl>
+      ${e.mag != null ? `<dt>Magnitude</dt><dd class="mono">${e.mag}</dd><dt>Depth</dt><dd class="mono">${Math.round(e.depth)} km</dd>` : ''}
+      <dt>Position</dt><dd class="mono">${e.lat.toFixed(2)}, ${e.lon.toFixed(2)}</dd><dt>Seen</dt><dd>${ago(e.ts)} ago</dd>
+      <dt>Severity</dt><dd><span class="tag ${e.severity === 'info' ? 'neu' : 'neg'}">${esc(e.severity)}</span>${e.simulated ? ' <span class="tag sim">simulated</span>' : ''}</dd>
+      ${e.url ? `<dt>Source</dt><dd><a href="${esc(e.url)}" target="_blank" rel="noopener">Open report ↗</a></dd>` : ''}</dl>
+      <div class="label sub">Posts nearby</div>${postRows(S.posts.filter(p => p.lat != null && Math.abs(p.lat - e.lat) < 4 && Math.abs(p.lon - e.lon) < 4).slice(-10).reverse())}`;
+  } else if (s.kind === 'incident') {
+    const e = s.item, col = e.severity === 'critical' ? 'var(--crit)' : e.severity === 'warning' ? 'var(--plasma)' : 'var(--ion)';
+    const nums = RAD.NUMBERS[e.country];
+    const near = S.posts.filter(p => p.lat != null && Math.abs(p.lat - e.lat) < 3 && Math.abs(p.lon - e.lon) < 3).slice(-8).reverse();
+    el.innerHTML = `<header><h2 style="color:${col}">${esc(INC_KIND[e.kind] || 'Incident')}</h2>${close}</header>
+      <p class="big" style="color:${col};font-size:1.2rem">${esc(e.title)}</p>
+      <dl><dt>Detail</dt><dd>${esc(e.detail || '—')}</dd><dt>Source</dt><dd>${esc(e.source || '—')}</dd><dt>Seen</dt><dd>${ago(e.ts)} ago</dd>
+      <dt>Position</dt><dd class="mono">${e.lat.toFixed(2)}, ${e.lon.toFixed(2)}${e.country ? ' · ' + esc(e.country) : ''}</dd>
+      <dt>Severity</dt><dd><span class="dtag ${e.severity}">${esc(e.severity)}</span>${e.simulated ? ' <span class="tag sim">simulated</span>' : ''}</dd>
+      ${nums ? `<dt>Call</dt><dd class="mono" style="color:var(--plasma)">${nums.map(n => esc(n[1]) + ' <span style="color:var(--dim)">' + esc(n[0]) + '</span>').join('<br>')}</dd>` : ''}</dl>
+      <div class="row" style="margin-top:12px"><button class="btn primary sm" id="dListen">Listen nearby</button>${e.url && /^https?:/.test(e.url) ? `<a class="btn sm" href="${esc(e.url)}" target="_blank" rel="noopener">Open report ↗</a>` : ''}<button class="btn sm" id="dAlertHere">Alert me on emergencies here</button></div>
+      <div class="label sub">Posts nearby</div>${postRows(near)}`;
+    $('#dListen').onclick = () => Radio.listenNear(e);
+    $('#dAlertHere').onclick = () => { location.hash = 'alerts'; resetForm(); $('#rName').value = 'Emergencies' + (e.country ? ' in ' + e.country : ''); S.formTopics = ['emergency']; drawFormTopics(); $('#rCountry').value = e.country || ''; $('#dSound').checked = true; $('#rName').focus(); };
+  } else if (s.kind === 'weather') {
+    const w = s.item;
+    el.innerHTML = `<header><h2>Weather station</h2>${close}</header><p class="big">${esc(w.city)}, ${esc(w.country)}</p>
+      <p style="font:600 2.4rem/1 var(--f-display);margin:0 0 12px;color:${tempColor(w.temp)}">${w.temp}°C <span style="font-size:1rem;color:var(--dim)">${esc(WMO(w.code))}</span></p>
+      <dl><dt>Humidity</dt><dd class="mono">${w.humidity}%</dd><dt>Wind</dt><dd class="mono">${w.wind} km/h</dd><dt>Rain</dt><dd class="mono">${w.precip} mm</dd></dl>
+      ${w.simulated ? '<p class="note">Simulated reading. Your Scavenge server pulls real readings from Open-Meteo.</p>' : ''}
+      <div class="label sub">Posts from ${esc(w.city)}</div>${postRows(S.posts.filter(p => p.city === w.city).slice(-10).reverse())}`;
+  }
+  const c = $('#dClose'); if (c) c.onclick = () => select(null);
+}
+let sidePostsLast = 0;
+function renderSidePosts() {
+  if (S.sideTab !== 'posts') return; sidePostsLast = Date.now();
+  const country = S.sel && S.sel.kind === 'country' ? S.sel.key : '';
+  const list = []; for (let i = S.posts.length - 1; i >= 0 && list.length < 60; i--) { const p = S.posts[i]; if (inTopic(p, S.lens) && (!country || p.country === country)) list.push(p); }
+  $('#p-posts').innerHTML = `<header><h2>Latest posts</h2><span class="label">${esc([country, S.lens && TOPICS[S.lens].label].filter(Boolean).join(' · ') || 'Worldwide')}</span></header>${postRows(list)}`;
+}
+function renderEvents() {
+  const items = [];
+  if (S.layers.emergency) items.push(...(S.events.emergency || []).map(e => Object.assign({}, e, { layer: 'incident' })));
+  if (S.layers.quake) items.push(...S.events.quake);
+  if (S.layers.nature) items.push(...S.events.nature);
+  if (S.layers.news) items.push(...S.events.news.filter(e => e.severity !== 'info'));
+  if (S.layers.weather) items.push(...S.events.weather.filter(w => w.severity !== 'info').map(w => Object.assign({}, w, { title: `${w.city}: ${WMO(w.code)}, ${w.temp}°C, wind ${w.wind} km/h` })));
+  const rank = { critical: 0, warning: 1, info: 2 };
+  items.sort((a, b) => rank[a.severity] - rank[b.severity] || b.ts - a.ts);
+  $('#p-events').innerHTML = `<header><h2>Event log</h2><span class="label">${items.length} tracked</span></header>` + (items.slice(0, 80).map((e, i) => `<button class="ev" data-i="${i}"><span class="dot sev-${e.severity}"></span><span class="t">${esc(e.title)}</span><span class="m">${ago(e.ts)}</span></button>`).join('') || '<p class="empty">No events on the active layers.</p>');
+  $('#p-events').onclick = ev => { const b = ev.target.closest('.ev'); if (!b) return; const e = items[+b.dataset.i]; select({ kind: e.layer === 'weather' ? 'weather' : e.layer === 'incident' ? 'incident' : 'event', item: e }); MapView.focus(e.lon, e.lat, 4); };
+}
+
+// ============================================================ OVERVIEW
+function topicTiles(el, posts, active, onPick, win) {
+  const tb = C.topicBreakdown(posts, { windowMin: win || 30 });
+  const total = Math.max(1, posts.length);
+  el.innerHTML = tb.map(t => `<button class="tile" data-t="${t.key}" aria-pressed="${active === t.key}" style="--c:${TOPICS[t.key].color}">
+    <span class="tn">${esc(t.label)}</span><span class="tv">${fmt(t.count)}<small>${Math.round(t.count / total * 100)}%</small></span>
+    <span class="bar"><b style="width:${t.count / Math.max(1, tb[0].count) * 100}%"></b></span>
+    <span class="ts"><span>${t.prev ? (t.velocity >= 0 ? '▲ ' : '▼ ') + Math.abs(Math.round(t.velocity * 100)) + '%' : t.cur ? 'NEW' : '—'}</span><span>${meter(t.sentiment)}</span></span></button>`).join('');
+  el.onclick = e => { const b = e.target.closest('.tile'); if (b) onPick(b.dataset.t); };
+}
+let ovLast = 0;
+function renderOverview(force) {
+  if (!force && Date.now() - ovLast < 2500) return; ovLast = Date.now();
+  topicTiles($('#ovTopics'), S.posts.filter(p => Date.now() - p.ts < 3600000), '', k => { S.an.topic = k; location.hash = 'analytics'; });
+  const tr = C.trends(S.posts, { windowMin: 30, limit: 8 });
+  $('#ovTrends').innerHTML = tr.map(t => `<div class="barrow click" data-term="${esc(t.term)}"><span>${esc(t.term)}</span><span class="track"><b style="width:${t.count / tr[0].count * 100}%"></b></span><span class="n">${t.count}</span></div>`).join('') || '<p class="empty">Gathering signal…</p>';
+  $('#ovTrends').onclick = e => { const b = e.target.closest('[data-term]'); if (b) select({ kind: 'trend', term: b.dataset.term }); };
+  $('#ovAlerts').innerHTML = alertRows(S.alerts.slice(0, 8));
+}
+function alertRows(list) { return list.map(a => { postIndex.set(a.post.id, a.post); return `<button class="ev" data-pid="${esc(a.post.id)}"><span class="dot sev-warning"></span><span class="t"><small>${esc(a.rule)} · ${esc(PLAT[a.post.platform]?.label || a.post.platform)}${a.post.city ? ' · ' + esc(a.post.city) : ''}</small>${highlight(a.post.text.slice(0, 200), a.hits)}</span><span class="m">${ago(a.ts)}</span></button>`; }).join('') || '<p class="empty">Alerts appear here the moment a rule matches.</p>'; }
+
+// ============================================================ FEEDS
+const Feed = (() => {
+  const box = $('#posts'); let pending = [];
+  function matches(p) { const f = S.feed; if (f.plats.size && !f.plats.has(p.platform)) return false; if (f.mood !== 'any' && p.mood !== f.mood) return false; if (f.country && p.country !== f.country) return false; if (!inTopic(p, f.topic)) return false; if (f.q && !p.text.toLowerCase().includes(f.q.toLowerCase())) return false; return true; }
+  function card(p) {
+    postIndex.set(p.id, p); const pl = PLAT[p.platform] || { label: p.platform, color: '#fff' };
+    return `<div class="post" data-pid="${esc(p.id)}" role="button" tabindex="0"><span style="background:${pl.color}"></span><div>
+      <div class="meta"><span class="pl" style="color:${pl.color}">${esc(pl.label)}</span><span class="who">${esc(p.author)}</span><span>${ago(p.ts)} ago</span>${p.city || p.country ? `<span>⌖ ${esc([p.city, p.country].filter(Boolean).join(', '))}</span>` : ''}${p.simulated ? '<span class="tag sim">sim</span>' : ''}</div>
+      <p>${highlight(p.text, [...S.watch, S.feed.q].filter(Boolean))}</p>
+      <div class="meta"><span>${moodTag(p)} ${meter(p.sentiment)}</span>${topicTags(p)}${p.url ? `<a href="${esc(p.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">open ↗</a>` : ''}</div></div></div>`;
+  }
+  function reset() { const list = []; for (let i = S.posts.length - 1; i >= 0 && list.length < 120; i--) if (matches(S.posts[i])) list.push(S.posts[i]); box.innerHTML = list.map(card).join('') || '<div class="panel"><p class="empty">No posts match these filters yet. New matches appear here as they arrive.</p></div>'; stat(); }
+  function push(p) { if (S.view !== 'feeds' || S.feed.paused || !matches(p)) return; pending.push(p); }
+  function flush() { if (!pending.length || S.view !== 'feeds') return; if (box.querySelector('.panel')) box.innerHTML = ''; box.insertAdjacentHTML('afterbegin', pending.reverse().map(card).join('')); pending = []; while (box.children.length > 150) box.lastElementChild.remove(); stat(); }
+  function stat() { const n = S.posts.filter(matches).length; $('#fStat').textContent = `${n.toLocaleString()} of ${S.posts.length.toLocaleString()} captured posts match. Click a post to read it and see where it is.${S.feed.paused ? ' Stream paused.' : ''}`; }
+  function init() {
+    $('#fPlats').innerHTML = Object.entries(PLAT).map(([id, p]) => `<button class="pbtn" data-p="${id}" aria-pressed="false" style="color:${p.color}"><i style="background:${p.color}"></i><span style="color:var(--fg)">${p.label}</span></button>`).join('');
+    $('#fPlats').onclick = e => { const b = e.target.closest('.pbtn'); if (!b) return; const id = b.dataset.p; S.feed.plats.has(id) ? S.feed.plats.delete(id) : S.feed.plats.add(id); b.setAttribute('aria-pressed', S.feed.plats.has(id)); reset(); };
+    $('#fTopic').innerHTML = '<option value="">All topics</option>' + Object.entries(TOPICS).map(([k, t]) => `<option value="${k}">${esc(t.label)}</option>`).join('');
+    $('#fTopic').onchange = e => { S.feed.topic = e.target.value; reset(); };
+    let t; $('#fQ').oninput = e => { clearTimeout(t); t = setTimeout(() => { S.feed.q = e.target.value.trim(); reset(); }, 200); };
+    $('#fMood').onchange = e => { S.feed.mood = e.target.value; reset(); };
+    $('#fCountry').onchange = e => { S.feed.country = e.target.value; reset(); };
+    $('#fPause').onclick = e => { S.feed.paused = !S.feed.paused; e.target.setAttribute('aria-pressed', S.feed.paused); e.target.textContent = S.feed.paused ? 'Resume stream' : 'Pause stream'; if (!S.feed.paused) reset(); else stat(); };
+    $('#fWatch').onclick = () => { const q = S.feed.q; if (q && !S.watch.includes(q)) API.setWatch([...S.watch, q]).then(renderWatch); };
+    box.addEventListener('keydown', e => { if (e.key === 'Enter') { const b = e.target.closest('[data-pid]'); if (b) b.click(); } });
+  }
+  return { init, reset, push, flush };
+})();
+
+// ============================================================ ALERTS
+function countryOptions(sel, anyLabel) { const list = [...new Set(C.CITIES.map(c => c.country))].sort(); sel.innerHTML = `<option value="">${anyLabel}</option>` + list.map(c => `<option>${esc(c)}</option>`).join(''); }
+S.formTopics = [];
+let drawFormTopics = () => {};
+function initAlerts() {
+  $('#rPlats').innerHTML = Object.entries(PLAT).map(([id, p]) => `<label><input type="checkbox" value="${id}"> <span style="color:${p.color}">${p.label}</span></label>`).join('');
+  countryOptions($('#rCountry'), 'Anywhere');
+  drawFormTopics = topicChips($('#rTopics'), () => S.formTopics, v => (S.formTopics = v), true);
+  topicChips($('#aLogTopics'), () => S.logTopic, v => { S.logTopic = v; renderAlerts(); }, false);
+  $('#deliverNote').textContent = API.simLocal
+    ? 'Test site: in-app, desktop and sound alerts work here. Webhook and ntfy.sh delivery are sent by the Scavenge server, so they start once you run it.'
+    : 'Webhook and ntfy.sh alerts are sent by your Scavenge server, with a 60-second cooldown per rule.';
+  $('#dBrowser').onchange = e => { if (e.target.checked && 'Notification' in window && Notification.permission === 'default') Notification.requestPermission().catch(() => {}); };
+  $('#ruleForm').onsubmit = async e => {
+    e.preventDefault();
+    const terms = ($('#rTerms').value.match(/"[^"]+"|[^,]+/g) || []).map(s => s.trim()).filter(Boolean);
+    const rule = { id: $('#rId').value || undefined, name: $('#rName').value.trim(), terms, categories: S.formTopics.slice(), match: document.querySelector('[name=rMatch]:checked').value,
+      platforms: $$('#rPlats input:checked').map(i => i.value), country: $('#rCountry').value, mood: $('#rMood').value, enabled: true,
+      delivery: { inapp: $('#dInapp').checked, browser: $('#dBrowser').checked, sound: $('#dSound').checked, webhook: $('#dWebhook').value.trim() || undefined, ntfy: $('#dNtfy').value.trim() || undefined } };
+    const err = $('#rErr'); err.hidden = true;
+    if (!rule.name || (!terms.length && !rule.categories.length)) { err.textContent = 'Give the rule a name and pick at least one topic or word to watch.'; err.hidden = false; return; }
+    try { await API.saveRule(rule); resetForm(); renderAlerts(); toast({ rule: 'Rule armed', post: { platform: 'x', text: `“${rule.name}” is now watching ${[...rule.categories.map(c => TOPICS[c].label), ...terms].join(', ')}` }, hits: terms }); }
+    catch (x) { err.textContent = 'Could not save the rule: ' + x.message; err.hidden = false; }
+  };
+  $('#rCancel').onclick = resetForm;
+  $('#clearAlerts').onclick = () => { S.alerts = []; S.seenAlerts = 0; store.set('alerts', []); renderAlerts(); updateBadge(); };
+  $('#rules').onclick = async e => {
+    const b = e.target.closest('button'); if (!b) return;
+    const r = S.rules.find(x => x.id === b.dataset.id); if (!r) return;
+    if (b.dataset.act === 'del') { if (b.dataset.armed) { await API.deleteRule(r.id); renderAlerts(); } else { b.dataset.armed = 1; b.textContent = 'Confirm delete'; setTimeout(() => { if (b.isConnected) { delete b.dataset.armed; b.textContent = 'Delete'; } }, 3000); } }
+    if (b.dataset.act === 'toggle') { r.enabled = r.enabled === false; await API.saveRule(r); renderAlerts(); }
+    if (b.dataset.act === 'edit') editRule(r);
+  };
+}
+function resetForm() { $('#ruleForm').reset(); $('#rId').value = ''; S.formTopics = []; drawFormTopics(); $('#rCancel').hidden = true; $('#ruleFormTitle').textContent = 'New alert rule'; $('#rSave').textContent = 'Arm rule'; }
+function editRule(r) {
+  $('#rId').value = r.id; $('#rName').value = r.name; $('#rTerms').value = (r.terms || []).join(', ');
+  S.formTopics = (r.categories || []).slice(); drawFormTopics();
+  document.querySelector(`[name=rMatch][value=${r.match === 'all' ? 'all' : 'any'}]`).checked = true;
+  $$('#rPlats input').forEach(i => (i.checked = (r.platforms || []).includes(i.value)));
+  $('#rCountry').value = r.country || ''; $('#rMood').value = r.mood || 'any';
+  const d = r.delivery || {}; $('#dInapp').checked = !!d.inapp; $('#dBrowser').checked = !!d.browser; $('#dSound').checked = !!d.sound; $('#dWebhook').value = d.webhook || ''; $('#dNtfy').value = d.ntfy || '';
+  $('#rCancel').hidden = false; $('#ruleFormTitle').textContent = 'Edit rule'; $('#rSave').textContent = 'Save changes';
+  $('#ruleForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+function renderAlerts() {
+  $('#ruleCount').textContent = S.rules.filter(r => r.enabled !== false).length + ' armed';
+  $('#rules').innerHTML = S.rules.map(r => `<div class="rule"><div><h3 style="${r.enabled === false ? 'opacity:.5' : ''}">${esc(r.name)}</h3>
+    <div class="meta">${(r.categories || []).length ? 'Topics: ' + r.categories.map(c => `<span style="color:${TOPICS[c]?.color}">${esc(TOPICS[c]?.label || c)}</span>`).join(', ') + '<br>' : ''}
+    ${(r.terms || []).length ? `${r.match === 'all' ? 'ALL of' : 'ANY of'}: ${r.terms.map(t => `<span style="color:var(--plasma)">${esc(t)}</span>`).join(', ')}<br>` : ''}
+    ${r.platforms?.length ? r.platforms.map(p => esc(PLAT[p]?.label || p)).join(', ') : 'All platforms'} · ${esc(r.country || 'Anywhere')} · ${r.mood && r.mood !== 'any' ? esc(r.mood) + ' only' : 'any sentiment'}<br>
+    → ${[r.delivery?.inapp && 'in-app', r.delivery?.browser && 'desktop', r.delivery?.sound && 'sound', r.delivery?.webhook && 'webhook', r.delivery?.ntfy && 'ntfy:' + esc(r.delivery.ntfy)].filter(Boolean).join(', ') || 'log only'}</div>
+    <div class="row" style="margin-top:8px"><button class="btn sm" data-act="toggle" data-id="${esc(r.id)}">${r.enabled === false ? 'Arm' : 'Disarm'}</button><button class="btn sm" data-act="edit" data-id="${esc(r.id)}">Edit</button><button class="btn sm" data-act="del" data-id="${esc(r.id)}">Delete</button></div></div>
+    <div class="hits">${fmt(r.hits || 0)}<div class="label">hits</div></div></div>`).join('') || '<p class="empty">No rules yet. Create one on the left.</p>';
+  $('#alog').innerHTML = alertRows(S.alerts.filter(a => inTopic(a.post, S.logTopic)).slice(0, 100));
+  S.seenAlerts = S.alerts.length; updateBadge();
+}
+
+// ============================================================ ANALYTICS
+let chTime = null, chMood = null, briefFor = null, drawATopics = () => {};
+function chartDefaults() { if (!window.Chart) return; Chart.defaults.color = '#7a8ea7'; Chart.defaults.font.family = '"JetBrains Mono", ui-monospace, monospace'; Chart.defaults.font.size = 10; Chart.defaults.borderColor = '#18293e'; }
+function initAnalytics() {
+  countryOptions($('#aScope'), 'Global — all countries');
+  $('#aScope').onchange = e => { S.an.country = e.target.value; briefFor = null; renderAnalytics(true); };
+  $('#aWin').onchange = e => { S.an.win = +e.target.value; renderAnalytics(true); };
+  $('#aBrief').onclick = () => { briefFor = null; renderBrief(); };
+  drawATopics = topicChips($('#aTopics'), () => S.an.topic, v => { S.an.topic = v; briefFor = null; renderAnalytics(true); }, false);
+  $('#trBody').onclick = e => { const r = e.target.closest('tr[data-term]'); if (r) select({ kind: 'trend', term: r.dataset.term }); };
+  $('#geoBars').onclick = e => { const r = e.target.closest('.barrow'); if (!r) return; if (!S.an.country) { S.an.country = r.dataset.k; briefFor = null; renderAnalytics(true); } };
+}
+async function renderBrief() {
+  const key = (S.an.country || 'global') + '|' + S.an.topic;
+  if (briefFor === key) return; briefFor = key;
+  const p = $('#briefText'); p.textContent = 'Analysing signal'; p.classList.add('typing');
+  try { const b = await API.brief(S.an.country, S.an.topic); p.classList.remove('typing'); typeOut(p, b.text); $('#briefEng').textContent = `ENGINE · ${b.engine}${b.note ? ' · ' + b.note : ''} · ${new Date().toISOString().slice(11, 16)} UTC`; }
+  catch (x) { p.classList.remove('typing'); p.textContent = 'Briefing unavailable: ' + x.message; }
+}
+function typeOut(el, text) { if (matchMedia('(prefers-reduced-motion: reduce)').matches) { el.textContent = text; return; } let i = 0; el.textContent = ''; el.classList.add('typing'); const step = () => { i += 4; el.textContent = text.slice(0, i); if (i < text.length) requestAnimationFrame(step); else el.classList.remove('typing'); }; step(); }
+let anLast = 0;
+function renderAnalytics(force) {
+  if (!force && Date.now() - anLast < 3000) return; anLast = Date.now();
+  const c = S.an.country, tp = S.an.topic;
+  const region = c ? S.posts.filter(p => p.country === c) : S.posts;
+  const scope = tp ? region.filter(p => inTopic(p, tp)) : region;
+  $('#aScope').value = c; drawATopics();
+  $('#aNote').textContent = `${scope.length.toLocaleString()} posts in scope${tp ? ' · ' + TOPICS[tp].label : ''}${c ? ' · ' + c : ''}. Every post is scored for sentiment and sorted into topics as it arrives; trends compare the last ${S.an.win} minutes with the ${S.an.win} before.`;
+  topicTiles($('#aTiles'), region, tp, k => { S.an.topic = S.an.topic === k ? '' : k; briefFor = null; renderAnalytics(true); }, S.an.win);
+  renderBrief();
+  const tl = C.timeline(scope, 30);
+  const labels = Array.from({ length: 30 }, (_, i) => new Date(tl.start + i * tl.step).toISOString().slice(11, 16));
+  const ds = Object.entries(tl.series).sort((a, b) => b[1].reduce((x, y) => x + y) - a[1].reduce((x, y) => x + y)).map(([pl, data]) => ({ label: PLAT[pl]?.label || pl, data, borderColor: PLAT[pl]?.color, backgroundColor: PLAT[pl]?.color + '22', borderWidth: 1.5, pointRadius: 0, tension: 0.35, fill: false }));
+  if (window.Chart) {
+    if (!chTime) chTime = new Chart($('#cTime'), { type: 'line', data: { labels, datasets: ds }, options: { animation: false, maintainAspectRatio: false, interaction: { mode: 'index', intersect: false }, plugins: { legend: { position: 'bottom', labels: { boxWidth: 8, boxHeight: 8, usePointStyle: true } } }, scales: { x: { grid: { color: '#111f30' }, ticks: { maxTicksLimit: 6 } }, y: { beginAtZero: true, grid: { color: '#111f30' }, ticks: { precision: 0 } } } } });
+    else { chTime.data.labels = labels; chTime.data.datasets = ds; chTime.update('none'); }
+    const m = { positive: 0, neutral: 0, negative: 0 }; scope.forEach(p => m[p.mood]++);
+    const md = [m.positive, m.neutral, m.negative];
+    if (!chMood) chMood = new Chart($('#cMood'), { type: 'doughnut', data: { labels: ['Positive', 'Neutral', 'Negative'], datasets: [{ data: md, backgroundColor: ['#3ff2a4', '#3a5574', '#ff4f6d'], borderColor: '#08101b', borderWidth: 2 }] }, options: { animation: false, maintainAspectRatio: false, cutout: '68%', plugins: { legend: { position: 'right', labels: { boxWidth: 8, boxHeight: 8, usePointStyle: true } } } } });
+    else { chMood.data.datasets[0].data = md; chMood.update('none'); }
+  }
+  const bp = C.breakdown(scope, 'platform');
+  $('#moodPlat').innerHTML = bp.slice(0, 6).map(r => `<div class="barrow"><span style="color:${PLAT[r.key]?.color}">${esc(PLAT[r.key]?.label || r.key)}</span><span class="track" style="background:linear-gradient(90deg,transparent 49.5%,#24405f 49.5% 50.5%,transparent 50.5%),var(--line)"><b style="left:${r.sentiment < 0 ? 50 + r.sentiment * 100 : 50}%;width:${Math.min(50, Math.abs(r.sentiment) * 100)}%;background:${r.sentiment < 0 ? 'var(--crit)' : 'var(--ok)'}"></b></span><span class="n">${r.sentiment >= 0 ? '+' : ''}${r.sentiment.toFixed(2)}</span></div>`).join('');
+  const tr = C.trends(scope, { windowMin: S.an.win, limit: 15 });
+  const maxV = Math.max(1, ...tr.map(t => Math.abs(t.velocity)));
+  $('#trCount').textContent = tr.length + ' topics';
+  $('#trBody').innerHTML = tr.map((t, i) => `<tr class="trow" data-term="${esc(t.term)}" title="Inspect ${esc(t.term)}"><td class="mono" style="color:var(--dim)">${String(i + 1).padStart(2, '0')}</td><td style="color:${i < 3 ? 'var(--ion)' : 'var(--fg)'};font-weight:${i < 3 ? 600 : 400}">${esc(t.term)}</td><td class="num">${t.count}</td>
+    <td class="mono" style="white-space:nowrap"><span class="vel ${t.velocity < 0 ? 'dn' : ''}" style="width:${Math.max(2, Math.abs(t.velocity) / maxV * 50)}px"></span>${t.previous ? (t.velocity >= 0 ? '▲' : '▼') + Math.abs(Math.round(t.velocity * 100)) + '%' : 'NEW'}</td>
+    <td>${meter(t.sentiment)}</td><td class="num">${t.platforms.length}</td></tr>`).join('') || '<tr><td colspan="6" class="empty">Not enough signal in this window yet.</td></tr>';
+  const geoKey = c ? 'city' : 'country';
+  $('#geoTitle').textContent = c ? `Cities in ${c}` : 'Countries';
+  const geo = C.breakdown(scope, geoKey).slice(0, 10);
+  $('#geoBars').innerHTML = geo.map(r => `<div class="barrow ${c ? '' : 'click'}" data-k="${esc(r.key)}"><span>${esc(r.key)}</span><span class="track"><b style="width:${r.count / geo[0].count * 100}%"></b></span><span class="n">${r.count}</span></div>`).join('') || '<p class="empty">No located posts yet.</p>';
+  const cities = C.breakdown(scope, 'city').slice(0, 10);
+  $('#cityBody').innerHTML = cities.map(r => { const t = C.trends(scope.filter(p => p.city === r.key), { windowMin: 240, limit: 1, minCount: 1 })[0]; return `<tr><td>${esc(r.key)}</td><td style="color:var(--dim)">${esc(r.country)}</td><td class="num">${r.count}</td><td>${meter(r.sentiment)}</td><td style="color:var(--plasma)">${t ? esc(t.term) : '—'}</td></tr>`; }).join('') || '<tr><td colspan="5" class="empty">No city-level signal yet.</td></tr>';
+  $('#platBars').innerHTML = bp.map(r => `<div class="barrow"><span style="color:${PLAT[r.key]?.color}">${esc(PLAT[r.key]?.label || r.key)}</span><span class="track"><b style="width:${r.count / bp[0].count * 100}%;background:${PLAT[r.key]?.color}"></b></span><span class="n">${Math.round(r.count / Math.max(1, scope.length) * 100)}%</span></div>`).join('');
+  const wx = c ? S.events.weather.filter(w => w.country === c) : S.events.weather;
+  const hot = wx.slice().sort((a, b) => b.temp - a.temp)[0], cold = wx.slice().sort((a, b) => a.temp - b.temp)[0], windy = wx.slice().sort((a, b) => b.wind - a.wind)[0];
+  const bigQ = S.events.quake.slice().sort((a, b) => b.mag - a.mag)[0];
+  const cats = C.breakdown(S.events.nature.map(e => ({ cat: (NAT[e.category] || [, e.category])[1], sentiment: 0 })), 'cat');
+  $('#earthSum').innerHTML = `<dl>${hot ? `<dt>Hottest</dt><dd>${esc(hot.city)} <span class="mono" style="color:${tempColor(hot.temp)}">${hot.temp}°C</span></dd>` : ''}
+    ${cold ? `<dt>Coldest</dt><dd>${esc(cold.city)} <span class="mono" style="color:${tempColor(cold.temp)}">${cold.temp}°C</span></dd>` : ''}
+    ${windy ? `<dt>Windiest</dt><dd>${esc(windy.city)} <span class="mono">${windy.wind} km/h</span></dd>` : ''}
+    ${bigQ ? `<dt>Largest quake</dt><dd>${esc(bigQ.title)}</dd>` : ''}
+    <dt>Open events</dt><dd>${cats.map(x => `${esc(x.key)} <span class="mono" style="color:var(--dim)">${x.count}</span>`).join(' · ') || '—'}</dd></dl>`;
+}
+
+// ============================================================ LIVE TV
+const TV = (() => {
+  const save = () => { store.set('tvList', S.tv.list); store.set('tvWall', S.tv.wall); store.set('tvLayout', S.tv.layout); };
+  const byId = id => S.tv.list.find(c => c.id === id);
+  function parse(url) {
+    try {
+      const u = new URL(url);
+      if (/\.m3u8($|\?)/i.test(u.pathname + u.search)) return { type: 'hls' };
+      if (/\.(mp4|webm|ogg)($|\?)/i.test(u.pathname)) return { type: 'video' };
+      if (/youtu\.?be/.test(u.hostname)) { const v = u.hostname === 'youtu.be' ? u.pathname.slice(1) : u.searchParams.get('v') || (u.pathname.match(/\/(?:live|embed)\/([\w-]{11})/) || [])[1]; const ch = (u.pathname.match(/\/channel\/(UC[\w-]{22})/) || [])[1]; return { type: 'youtube', videoId: v, channelId: ch }; }
+    } catch {}
+    return { type: 'link' };
+  }
+  async function embed(ch) {
+    const p = parse(ch.url);
+    if (p.type === 'youtube') {
+      let vid = p.videoId, cid = ch.cid || p.channelId;
+      if (!vid && !cid && API.resolveTV) { try { const r = await API.resolveTV(ch.url); vid = r.videoId; cid = r.channelId; if (cid) { ch.cid = cid; save(); } } catch {} }
+      if (vid) return `<iframe src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(vid)}?autoplay=1&mute=1" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen title="${esc(ch.name)}"></iframe>`;
+      if (cid) return `<iframe src="https://www.youtube.com/embed/live_stream?channel=${encodeURIComponent(cid)}&autoplay=1&mute=1" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen title="${esc(ch.name)}"></iframe>`;
+    }
+    if (p.type === 'video') return `<video src="${esc(ch.url)}" autoplay muted controls playsinline></video>`;
+    if (p.type === 'hls') return `<video data-hls="${esc(ch.url)}" autoplay muted controls playsinline></video>`;
+    return null;
+  }
+  const standby = ch => `<div class="standby"><div><b>Uplink standby</b>${API.server ? 'This link can’t be embedded. Open it in a new tab instead.' : 'Video can’t play inside this hosted test page. On your own Scavenge server the stream plays right here.'}<br><br><a class="btn sm" href="${esc(ch.url)}" target="_blank" rel="noopener">Watch ${esc(ch.name)} ↗</a></div></div>`;
+  let hlsLoading = null;
+  function attachHls(root) {
+    root.querySelectorAll('video[data-hls]').forEach(v => {
+      const src = v.dataset.hls;
+      if (v.canPlayType('application/vnd.apple.mpegurl')) { v.src = src; return; }
+      hlsLoading = hlsLoading || new Promise((ok, bad) => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/hls.js@1.5.13/dist/hls.min.js'; s.onload = ok; s.onerror = bad; document.head.appendChild(s); });
+      hlsLoading.then(() => { if (window.Hls && Hls.isSupported()) { const h = new Hls(); h.loadSource(src); h.attachMedia(v); } }).catch(() => {});
+    });
+  }
+  async function renderWall() {
+    const n = S.tv.layout;
+    $$('#v-tv [data-l]').forEach(b => b.setAttribute('aria-pressed', +b.dataset.l === n));
+    $('#wall').className = 'wall l' + n;
+    const ids = S.tv.wall.slice(0, n);
+    while (ids.length < n) ids.push(null);
+    $('#wall').innerHTML = ids.map((id, i) => { const ch = id && byId(id); return `<div class="slot" data-slot="${i}"><header><span>${ch ? esc(ch.name) : 'Empty slot ' + (i + 1)}</span>${ch ? `<span class="row"><span class="live"><i></i>Live</span><button class="btn sm" data-clear="${i}" aria-label="Remove from wall">×</button></span>` : ''}</header>
+      <div class="screen">${ch ? '<div class="standby"><div><b>Tuning…</b></div></div>' : '<div class="standby"><div><b>No signal</b>Pick a channel on the left and press Watch.</div></div>'}</div></div>`; }).join('');
+    for (let i = 0; i < ids.length; i++) {
+      const ch = ids[i] && byId(ids[i]); if (!ch) continue;
+      const scr = $(`#wall [data-slot="${i}"] .screen`);
+      const html = API.server ? await embed(ch) : null;
+      scr.innerHTML = html || standby(ch); attachHls(scr);
+    }
+  }
+  function renderList() {
+    $('#tvCount').textContent = S.tv.list.length + ' channels';
+    $('#tvList').innerHTML = S.tv.list.map(ch => `<div class="chan"><span><b>${esc(ch.name)}</b><br><span class="m">⌖ ${esc(ch.city || '—')} · ${esc(parse(ch.url).type)}</span></span>
+      <span class="live" style="color:${S.tv.wall.includes(ch.id) ? 'var(--crit)' : 'var(--dim)'};font:500 10px var(--f-mono)">${S.tv.wall.includes(ch.id) ? '● ON WALL' : ''}</span>
+      <span class="row"><button class="btn sm primary" data-play="${esc(ch.id)}">Watch</button><a class="btn sm" href="${esc(ch.url)}" target="_blank" rel="noopener">Open ↗</a>${cityOf(ch.city) ? `<button class="btn sm" data-locate="${esc(ch.id)}">On map</button>` : ''}<button class="btn sm" data-del="${esc(ch.id)}">Remove</button></span></div>`).join('') || '<p class="empty">No channels. Add one below.</p>';
+  }
+  function play(id) {
+    const ch = byId(id); if (!ch) return;
+    const w = S.tv.wall.filter(x => x !== id); w.unshift(id); S.tv.wall = w.slice(0, 4); save();
+    if (location.hash !== '#tv') location.hash = 'tv'; else { renderList(); renderWall(); }
+  }
+  function init() {
+    const sel = $('#tvCity'); sel.innerHTML = '<option value="">Don’t pin</option>' + C.CITIES.map(c => `<option>${esc(c.city)}</option>`).join('');
+    $('#tvList').onclick = e => {
+      const b = e.target.closest('button'); if (!b) return;
+      if (b.dataset.play) play(b.dataset.play);
+      if (b.dataset.locate) { const c = cityOf(byId(b.dataset.locate).city); MapView.focus(c.lon, c.lat, 5); }
+      if (b.dataset.del) { if (b.dataset.armed) { S.tv.list = S.tv.list.filter(c => c.id !== b.dataset.del); S.tv.wall = S.tv.wall.filter(x => x !== b.dataset.del); save(); renderList(); renderWall(); MapView.render(); } else { b.dataset.armed = 1; b.textContent = 'Confirm'; setTimeout(() => { if (b.isConnected) { delete b.dataset.armed; b.textContent = 'Remove'; } }, 3000); } }
+    };
+    $('#wall').onclick = e => { const b = e.target.closest('[data-clear]'); if (!b) return; S.tv.wall.splice(+b.dataset.clear, 1); save(); renderList(); renderWall(); };
+    $$('#v-tv [data-l]').forEach(b => (b.onclick = () => { S.tv.layout = +b.dataset.l; save(); renderWall(); }));
+    $('#tvForm').onsubmit = e => {
+      e.preventDefault(); const err = $('#tvErr'); err.hidden = true;
+      const url = $('#tvUrl').value.trim(), name = $('#tvName').value.trim();
+      try { new URL(url); } catch { err.textContent = 'That link isn’t a valid web address. Paste the full https:// link.'; err.hidden = false; return; }
+      const ch = { id: 'c' + Date.now().toString(36), name, url, city: $('#tvCity').value };
+      S.tv.list.push(ch); save(); $('#tvForm').reset(); play(ch.id); MapView.render();
+    };
+    $('#tvNote').textContent = API.server
+      ? 'Streams start muted so several can play at once; unmute the one you want to hear. YouTube links are resolved to the channel’s current live broadcast by your server.'
+      : 'This hosted test page can’t embed video from other sites, so each slot links out to the live stream. Run the Scavenge server and the same wall plays YouTube live channels, HLS (.m3u8) and MP4 streams inline.';
+  }
+  return { init, render() { renderList(); renderWall(); }, play };
+})();
+
+// ============================================================ RADIO & SOS
+const INC_KIND = { aircraft: 'Aircraft emergency', maritime: 'Maritime distress', radio: 'Radio distress call', disaster: 'Disaster alert', weather: 'Severe weather', social: 'SOS on social media' };
+const Radio = (() => {
+  const R = { src: 'sdr', hz: 156800000, mode: 'fm', chan: 'Marine VHF 16', playing: null, level: 0, kind: '', loc: { lat: -1.286, lon: 36.817, label: 'Nairobi' },
+    sdr: null, tbMode: 'ic', tx: null, pin: '', distressOnly: false, stations: [], stn: null, audioEl: new Audio(), seenSOS: store.get('sosSeen', '') };
+  R.audioEl.preload = 'none';
+  let actx = null, noise = null, meterTimer = null;
+  const ctx = () => (actx = actx || new (window.AudioContext || window.webkitAudioContext)());
+
+  // ---------- incidents & SOS ticker
+  const KINDS = [['', 'All'], ['aircraft', 'Aircraft'], ['maritime|radio', 'Maritime & radio'], ['disaster', 'Disasters'], ['weather', 'Weather'], ['social', 'Social SOS']];
+  function renderIncidents() {
+    const all = S.events.emergency || [];
+    const list = R.kind ? all.filter(e => R.kind.split('|').includes(e.kind)) : all;
+    if ($('#incCount')) $('#incCount').textContent = `${all.filter(e => e.severity === 'critical').length} critical · ${all.length} total`;
+    if (S.view === 'radio') $('#incList').innerHTML = list.slice(0, 120).map((e, i) => `<button class="inc" data-i="${i}"><span class="bar-${e.severity}"></span><span style="min-width:0">
+      <span class="k" style="color:${e.severity === 'critical' ? 'var(--crit)' : e.severity === 'warning' ? 'var(--plasma)' : 'var(--ion)'}">${esc(INC_KIND[e.kind] || e.kind)}${e.simulated ? ' · sim' : ''}</span>
+      <div class="t">${esc(e.title)}</div>${e.detail && e.detail !== e.title ? `<div class="d">${esc(e.detail.slice(0, 160))}</div>` : ''}</span><span class="m">${ago(e.ts)}</span></button>`).join('') || '<p class="empty">No active emergencies on this filter.</p>';
+    const inc = $('#incList'); if (inc) inc.onclick = ev => { const b = ev.target.closest('.inc'); if (!b) return; const e = list[+b.dataset.i]; select({ kind: 'incident', item: e }); if (e.lat != null) MapView.focus(e.lon, e.lat, 4); };
+    // ticker: newest critical incident from the last 3 hours
+    const top = all.filter(e => e.severity === 'critical' && Date.now() - e.ts < 3 * 3600000).sort((a, b) => b.ts - a.ts)[0];
+    const bar = $('#sos');
+    if (top && top.id !== R.seenSOS) { bar.hidden = false; $('#sosLabel').textContent = (C.distress(top.title) || {}).label || INC_KIND[top.kind] || 'Emergency'; $('#sosText').textContent = `${top.title} · ${top.source || ''} · ${ago(top.ts)} ago`; bar.dataset.id = top.id; }
+    else bar.hidden = true;
+    const n = all.filter(e => e.severity === 'critical').length, b = $('#sosBadge'); b.hidden = !n || S.view === 'radio'; b.textContent = n;
+  }
+  $('#sosView').onclick = () => { const e = (S.events.emergency || []).find(x => x.id === $('#sos').dataset.id); if (e) { select({ kind: 'incident', item: e }); if (e.lat != null) MapView.focus(e.lon, e.lat, 5); } };
+  $('#sosHide').onclick = () => { R.seenSOS = $('#sos').dataset.id; store.set('sosSeen', R.seenSOS); $('#sos').hidden = true; };
+
+  function renderNumbers() {
+    const c = $('#numCountry').value; const rows = RAD.NUMBERS[c] || [['Emergency (most mobile networks)', '112']];
+    $('#numBody').innerHTML = rows.map(([l, n]) => `<tr><td>${esc(l)}</td><td>${esc(n)}</td></tr>`).join('');
+  }
+
+  // ---------- receiver display
+  function display(extra) {
+    const mhz = R.hz >= 30e6;
+    $('#rxFreq').firstChild.nodeValue = mhz ? (R.hz / 1e6).toFixed(3) : (R.hz / 1e3).toFixed(1);
+    $('#rxUnit').textContent = (mhz ? 'MHZ' : 'KHZ') + ' · ' + R.mode.toUpperCase();
+    $('#rxChan').textContent = R.chan || 'Manual tuning';
+    $('#rxHz').value = (R.hz / 1e6).toFixed(R.hz >= 30e6 ? 3 : 4); $('#rxMode').value = R.mode;
+    const sd = R.sdr;
+    $('#rxStat').innerHTML = [
+      R.playing ? `<span class="on">● ${esc(R.playing)}</span>` : '<span>○ Idle</span>',
+      sd && sd.running ? `<span class="on">SDR ${sd.freqs.length > 1 ? 'scanning ' + sd.freqs.length + ' ch' : 'tuned'}${sd.current ? ' · ' + RAD.fmtFreq(sd.current) : ''}</span>` : '',
+      `<span>Near ${esc(R.loc.label)}</span>`, extra ? `<span>${esc(extra)}</span>` : ''].filter(Boolean).join('');
+    $$('#chList .ch').forEach(b => b.setAttribute('aria-pressed', +b.dataset.hz === R.hz));
+  }
+  function meter() {
+    const n = 24, on = Math.round(Math.max(0, Math.min(1, R.level)) * n);
+    $('#smeter').innerHTML = Array.from({ length: n }, (_, i) => `<i class="${i < on ? 'l' : ''} ${i >= 16 ? 'h' : ''} ${i >= 21 ? 'x' : ''}"></i>`).join('');
+  }
+  function startMeter(fn) { clearInterval(meterTimer); meterTimer = setInterval(() => { R.level = fn(); meter(); }, 120); }
+  function stopMeter() { clearInterval(meterTimer); R.level = 0; meter(); }
+
+  function tune(hz, mode, chan) {
+    R.hz = hz; R.mode = mode || R.mode; R.chan = chan != null ? chan : (RAD.CHANNELS.find(c => c.hz === hz) || {}).name || '';
+    display(); renderSource();
+  }
+
+  // ---------- sources
+  function renderSource() {
+    $$('#rxSrc button').forEach(b => b.setAttribute('aria-pressed', b.dataset.src === R.src));
+    $('#rxSrcLabel').textContent = { sdr: 'Local receiver', kiwi: 'Public receivers', online: 'Online feeds' }[R.src];
+    const body = $('#rxSrcBody'), khz = R.hz / 1000, hf = R.hz < 30e6;
+    if (R.src === 'sdr') {
+      const sd = R.sdr;
+      body.innerHTML = !API.server ? `<p class="note" style="margin:0">Your Scavenge server drives an RTL-SDR USB receiver (about US$30) to monitor VHF 16, 121.5 MHz and ham channels near you, records every transmission, transcribes it and flags MAYDAY calls. This test site plays <b>simulated</b> traffic instead: press Listen on a log entry.</p>`
+        : !sd ? '<p class="note" style="margin:0">Checking receiver…</p>'
+        : !sd.available ? `<div class="warnbox"><b>No receiver found</b><br>Install <span class="mono">rtl-sdr</span> on the server and plug in an RTL-SDR dongle. VHF/UHF works out of the box; HF needs a direct-sampling dongle (SDR_EXTRA_ARGS="-E direct2"). Meanwhile, use Public receivers.</div>`
+        : `<p class="note" style="margin:0">${sd.running ? 'Receiver running.' : 'Receiver ready.'} ${sd.transcription ? 'Transmissions are transcribed and checked for MAYDAY, PAN-PAN and SÉCURITÉ.' : 'Set TRANSCRIBE_URL to transcribe calls automatically.'}${sd.error ? ` <span class="error">${esc(sd.error)}</span>` : ''}</p>`;
+    } else if (R.src === 'kiwi') {
+      body.innerHTML = `<p class="note" style="margin:0 0 8px">Volunteer-run KiwiSDR receivers near <b>${esc(R.loc.label)}</b> that cover ${esc(RAD.fmtFreq(R.hz))}. Each opens tuned and ready in a new tab. <button class="btn sm" id="kHere">Use map centre</button></p><div id="kList"><p class="empty">Searching…</p></div>`;
+      $('#kHere').onclick = () => { const c = MapView.center(); R.loc = { lat: c.lat, lon: c.lon, label: `${c.lat.toFixed(1)}°, ${c.lon.toFixed(1)}°` }; renderSource(); display(); };
+      const fallback = `<div class="grid" style="gap:6px">${hf ? `<a class="btn sm" href="http://websdr.ewi.utwente.nl:8901/?tune=${khz}${R.mode}" target="_blank" rel="noopener">University of Twente WebSDR, tuned to ${khz} kHz ↗</a>` : ''}<a class="btn sm" href="http://rx.linkfanel.net/" target="_blank" rel="noopener">Map of public KiwiSDR receivers ↗</a></div>`;
+      if (!hf) { $('#kList').innerHTML = `<p class="note">Public KiwiSDR receivers cover HF (up to 30 MHz) only. For ${esc(RAD.fmtFreq(R.hz))} use a local receiver or Online feeds.</p>` + fallback; return; }
+      if (!API.kiwi) { $('#kList').innerHTML = '<p class="note">The live receiver list loads on your Scavenge server. These links work from here:</p>' + fallback; return; }
+      API.kiwi(R.loc.lat, R.loc.lon, R.hz, R.mode).then(list => {
+        $('#kList').innerHTML = (list.map(k => `<div class="chan"><span><b style="font-size:13px">${esc(k.name.slice(0, 70))}</b><br><span class="m">${k.km.toLocaleString()} km · ${k.users}/${k.max} listening${k.antenna ? ' · ' + esc(String(k.antenna).slice(0, 50)) : ''}</span></span><a class="btn sm primary" href="${esc(k.listen)}" target="_blank" rel="noopener">Listen ↗</a></div>`).join('') || '<p class="empty">No free receiver covers this frequency right now.</p>') + fallback;
+      }).catch(e => { $('#kList').innerHTML = `<p class="error">Receiver list unavailable: ${esc(e.message)}</p>` + fallback; });
+    } else {
+      const mhz = (R.hz / 1e6).toFixed(3);
+      const links = [
+        R.hz >= 108e6 && R.hz <= 137e6 && [`LiveATC: feeds on ${mhz} MHz`, `https://www.liveatc.net/search/?freq=${mhz}`],
+        hf && [`University of Twente WebSDR at ${khz} kHz`, `http://websdr.ewi.utwente.nl:8901/?tune=${khz}${R.mode}`],
+        ['Broadcastify: police, fire & EMS scanner feeds', 'https://www.broadcastify.com/listen/'],
+        ['OpenMHz: public-safety radio archives', 'https://openmhz.com/'],
+        ['Public KiwiSDR receivers map', 'http://rx.linkfanel.net/']
+      ].filter(Boolean);
+      body.innerHTML = `<p class="note" style="margin:0 0 8px">Feeds run by other services open in a new tab. Listening to police and emergency-service radio is restricted in some countries; check your local law.</p><div class="grid" style="gap:6px">${links.map(([l, u]) => `<a class="btn sm" href="${esc(u)}" target="_blank" rel="noopener">${esc(l)} ↗</a>`).join('')}</div>`;
+    }
+  }
+
+  // ---------- playback
+  function stopAll() {
+    R.audioEl.pause(); R.audioEl.removeAttribute('src'); R.audioEl.load();
+    if (noise) { try { noise.stop(); } catch {} noise = null; }
+    try { speechSynthesis.cancel(); } catch {}
+    R.playing = null; R.stn = null; stopMeter(); display(); renderStations(true);
+  }
+  function playStream(url, label, meterFn) {
+    stopAll();
+    R.audioEl.src = url; R.audioEl.volume = +$('#rxVol').value;
+    R.audioEl.play().then(() => { R.playing = label; display(); startMeter(meterFn || (() => 0.35 + Math.random() * 0.4)); })
+      .catch(e => { R.playing = null; display('Playback failed: ' + e.message); });
+  }
+  // Simulated transmission: band-passed static + synthetic voice reading the transcript.
+  function playSim(tx) {
+    stopAll();
+    try {
+      const a = ctx(), len = a.sampleRate * 2, buf = a.createBuffer(1, len, a.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+      noise = a.createBufferSource(); noise.buffer = buf; noise.loop = true;
+      const bp = a.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 1800; bp.Q.value = 0.7;
+      const gn = a.createGain(); gn.gain.value = 0.05 * +$('#rxVol').value;
+      noise.connect(bp).connect(gn).connect(a.destination); noise.start();
+    } catch {}
+    R.playing = `${tx.channel} (simulated)`; tune(tx.mode === 'fm' || tx.mode === 'am' ? Math.round(parseFloat(tx.freq) * 1e6) : Math.round(parseFloat(tx.freq) * 1e3), tx.mode, tx.channel);
+    startMeter(() => 0.45 + Math.random() * 0.45);
+    const done = () => { if (noise) { try { noise.stop(); } catch {} noise = null; } R.playing = null; stopMeter(); display(); };
+    try {
+      const u = new SpeechSynthesisUtterance(tx.text); u.rate = 1.05; u.pitch = 0.85; u.volume = +$('#rxVol').value; u.onend = done; u.onerror = done;
+      speechSynthesis.speak(u);
+    } catch { setTimeout(done, tx.duration * 1000); }
+  }
+
+  // ---------- radio log
+  function onTx(tx) {
+    S.radioLog = [tx, ...(S.radioLog || [])].slice(0, 200);
+    if (S.view === 'radio') renderLog();
+    if (tx.distress && tx.distress.severity !== 'info' && !API.simLocal) renderIncidents();
+  }
+  function renderLog() {
+    const list = (S.radioLog || []).filter(t => !R.distressOnly || (t.distress && t.distress.level !== 'securite'));
+    $('#rxLogNote').textContent = API.server ? (R.sdr && R.sdr.available ? 'Each transmission your receiver hears is clipped, transcribed and checked for distress words.' : 'Transmissions heard by your receiver appear here.') + (API.server && S.mode !== 'live' ? ' Server simulator: traffic is synthetic.' : '')
+      : 'Simulated radio traffic for the test site. Press Listen to hear it with a synthetic voice.';
+    $('#rxLog').innerHTML = list.slice(0, 80).map((t, i) => `<div class="item ${t.distress && t.distress.severity !== 'info' ? 'dis' : ''}"><div class="top">${t.distress ? `<span class="dtag ${t.distress.severity}">${esc(t.distress.label)}</span>` : ''}<b>${esc(t.channel)}</b><span>${esc(typeof t.freq === 'number' ? RAD.fmtFreq(t.freq) : t.freq + (+t.freq > 1000 ? ' kHz' : ' MHz'))} · ${esc((t.mode || '').toUpperCase())}</span><span>${t.duration}s</span><span>${ago(t.ts)} ago</span>${t.simulated ? '<span class="tag sim">sim</span>' : ''}</div>
+      <p>${t.text ? esc(t.text) : '<span style="color:var(--dim)">No transcript. Play the clip to hear it.</span>'}</p>
+      <div class="row">${t.clip ? `<audio controls preload="none" src="${esc(t.clip)}"></audio>` : `<button class="btn sm" data-sim="${i}">Listen</button>`}${t.lat != null ? `<button class="btn sm" data-loc="${i}">On map</button>` : ''}</div></div>`).join('') || '<p class="empty">Nothing received yet.</p>';
+    $('#rxLog').onclick = e => { const b = e.target.closest('button'); if (!b) return; const t = list[+(b.dataset.sim ?? b.dataset.loc)]; if (b.dataset.sim != null) playSim(t); else MapView.focus(t.lon, t.lat, 5); };
+  }
+
+  // ---------- local SDR / listen
+  async function refreshSdr() { if (!API.sdrStatus) return; try { R.sdr = await API.sdrStatus(); } catch { R.sdr = null; } if (R.src === 'sdr') renderSource(); display(); }
+  async function listen() {
+    if (R.src !== 'sdr') { renderSource(); return; }
+    if (!API.server) { const t = (S.radioLog || []).find(x => Math.abs(parseFloat(x.freq) * (+x.freq > 1000 ? 1e3 : 1e6) - R.hz) < 5000) || (S.radioLog || [])[0]; if (t) playSim(t); return; }
+    try { R.sdr = await API.tune({ freqs: [R.hz], mode: R.mode }); playStream('api/sdr/audio?t=' + Date.now(), 'Local receiver', () => R.sdrLevel || 0.05); }
+    catch (e) { display(e.message); }
+  }
+  async function scan(freqs, mode) {
+    if (!API.server) { display('Scanning needs your Scavenge server and a receiver.'); return; }
+    try { R.sdr = await API.tune({ freqs, mode, squelch: 60 }); R.chan = `Scanning ${freqs.length} channels`; R.mode = mode; playStream('api/sdr/audio?t=' + Date.now(), 'Scanning', () => R.sdrLevel || 0.05); }
+    catch (e) { display(e.message); }
+  }
+  function onSdr(d) {
+    if (d.level != null) { R.sdrLevel = Math.min(1, Math.log10(1 + d.level) / 4); if (R.sdr && d.current) R.sdr.current = d.current; }
+    else { R.sdr = d; if (S.view === 'radio') { display(); if (R.src === 'sdr') renderSource(); } }
+  }
+
+  // ---------- recording (shared by intercom & on-air)
+  const Rec = { mr: null, chunks: [], t0: 0, stream: null, timer: null };
+  async function recStart(btn, maxSec, onAuto) {
+    if (Rec.mr) return false;
+    if (!navigator.mediaDevices || !window.MediaRecorder) throw new Error('This browser can’t record audio.');
+    Rec.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+    Rec.chunks = []; Rec.mr = new MediaRecorder(Rec.stream); Rec.mr.ondataavailable = e => e.data.size && Rec.chunks.push(e.data); Rec.mr.start(250); Rec.t0 = Date.now();
+    btn.classList.add('live'); const sub = btn.querySelector('small'); const base = sub ? sub.textContent : '';
+    Rec.timer = setInterval(() => { const s = (Date.now() - Rec.t0) / 1000; if (sub) sub.textContent = `${s.toFixed(1)} s · release to send`; if (s >= maxSec) onAuto(); }, 100);
+    Rec.restore = () => { if (sub) sub.textContent = base; };
+    return true;
+  }
+  function recStop(btn) {
+    return new Promise(ok => {
+      if (!Rec.mr) return ok(null);
+      const mr = Rec.mr, dur = +((Date.now() - Rec.t0) / 1000).toFixed(1); clearInterval(Rec.timer); btn.classList.remove('live'); Rec.restore && Rec.restore();
+      mr.onstop = () => { Rec.stream.getTracks().forEach(t => t.stop()); const blob = new Blob(Rec.chunks, { type: mr.mimeType || 'audio/webm' }); Rec.mr = null; ok(dur < 0.4 ? null : { blob, dur }); };
+      mr.stop();
+    });
+  }
+  function bindPTT(btn, onStart, onStop) {
+    const down = e => { e.preventDefault(); onStart(); }, up = () => onStop();
+    btn.addEventListener('pointerdown', down); ['pointerup', 'pointerleave', 'pointercancel'].forEach(t => btn.addEventListener(t, up));
+    btn.addEventListener('keydown', e => { if ((e.key === ' ' || e.key === 'Enter') && !e.repeat) { e.preventDefault(); onStart(); } });
+    btn.addEventListener('keyup', e => { if (e.key === ' ' || e.key === 'Enter') onStop(); });
+  }
+
+  // ---------- intercom
+  function onIntercom(m) { S.intercom = [m, ...(S.intercom || []).filter(x => x.id !== m.id)].slice(0, 150); if (S.view === 'radio') renderIc(); else if (m.from !== myName()) toast({ rule: 'Intercom · ' + m.channel, post: { platform: 'radio', text: `${m.from}: ${m.text || 'voice message'}` }, hits: [] }); }
+  const myName = () => $('#icName').value.trim() || 'Operator';
+  function renderIc() {
+    $('#icLog').innerHTML = (S.intercom || []).map(m => `<div class="ic"><div class="top"><b class="${m.from === myName() ? 'me' : ''}">${esc(m.from)}</b><span>${esc(m.channel || 'Ops')}</span><span>${ago(m.ts)} ago</span>${m.duration ? `<span>${m.duration}s</span>` : ''}${m.simulated ? '<span class="tag sim">sim</span>' : ''}</div>
+      ${m.text ? `<p>${esc(m.text)}</p>` : ''}${m.audio ? `<audio controls preload="none" src="${esc(m.audio)}"></audio>` : ''}</div>`).join('') || '<p class="empty">No messages yet.</p>';
+  }
+  async function icDown() {
+    try { await recStart($('#icPTT'), 60, icUp); $('#icNote').textContent = ''; }
+    catch (e) { $('#icNote').textContent = (API.server ? 'Microphone unavailable: ' + e.message : 'The microphone isn’t available inside this hosted test page. Type a message instead; voice push-to-talk works on your own Scavenge server.'); }
+  }
+  async function icUp() {
+    const r = await recStop($('#icPTT')); if (!r) return;
+    try { await API.intercomVoice(myName(), $('#icChan').value, r.blob, r.dur); renderIc(); } catch (e) { $('#icNote').textContent = 'Could not send: ' + e.message; }
+  }
+
+  // ---------- on air
+  const SIM_TX = { ready: false, reason: 'Test site: nothing can be transmitted here. On your Scavenge server a licensed operator connects a transceiver through Hamlib rigctld.', bands: RAD.AMATEUR.map(([a, b]) => `${RAD.fmtFreq(a)}–${RAD.fmtFreq(b)}`), recent: [] };
+  async function refreshTx() { R.tx = API.txStatus ? await API.txStatus().catch(e => ({ ready: false, reason: e.message, bands: [], recent: [] })) : SIM_TX; renderAir(); }
+  function airCheck() {
+    const hz = parseFloat($('#airHz').value) * 1e6;
+    const ranges = R.tx && R.tx.bands && API.server ? null : RAD.AMATEUR;
+    const c = RAD.txCheck(hz, ranges || RAD.AMATEUR, { marine: R.tx && R.tx.marine });
+    $('#airCheck').innerHTML = c.ok ? `<span style="color:var(--ok)">✓ ${esc(RAD.fmtFreq(hz))} is inside the allowed transmit bands.</span>` : `<span class="error">✗ ${esc(c.reason)}</span>`;
+    return c.ok;
+  }
+  function renderAir() {
+    const t = R.tx || SIM_TX;
+    $('#airStatus').innerHTML = t.ready ? `<div class="okbox">Ready · call sign <b class="mono">${esc(t.callsign)}</b> · PTT via ${esc(t.ptt)} · max ${t.maxSeconds}s per over</div>`
+      : `<div class="warnbox"><b>Transmit unavailable</b><br>${esc(t.reason)}</div>`;
+    $('#airStatus').insertAdjacentHTML('beforeend', `<p class="note">Allowed bands: ${esc((t.bands || []).join(', '))}</p>`);
+    $('#airPTT').setAttribute('aria-disabled', String(!t.ready && API.server));
+    $('#airPTTsub').textContent = t.ready ? 'push-to-talk' : API.server ? 'disabled' : 'dry run';
+    $('#airLog').innerHTML = (t.recent || []).map(l => `<div class="ic"><div class="top"><b>${esc(l.callsign || '')}</b><span>${esc(l.hz ? RAD.fmtFreq(l.hz) : '')}</span><span>${ago(l.ts)} ago</span><span style="color:${l.ok ? 'var(--ok)' : 'var(--crit)'}">${l.ok ? 'sent' : esc(l.error || 'failed')}</span></div></div>`).join('') || '<p class="empty">No transmissions yet.</p>';
+    airCheck();
+  }
+  async function airDown() {
+    if (!airCheck()) return;
+    const t = R.tx || SIM_TX;
+    if (API.server && !t.ready) return;
+    if (API.server && !$('#airPin').value) { $('#airCheck').innerHTML = '<span class="error">Enter your operator PIN first.</span>'; return; }
+    try { await recStart($('#airPTT'), t.maxSeconds || 60, airUp); }
+    catch (e) { $('#airCheck').innerHTML = `<span class="error">${API.server ? 'Microphone unavailable: ' + esc(e.message) : 'Dry run: the frequency check passed. Recording and transmitting need your own server, microphone and licensed radio.'}</span>`; }
+  }
+  async function airUp() {
+    const r = await recStop($('#airPTT')); if (!r) return;
+    const hz = Math.round(parseFloat($('#airHz').value) * 1e6);
+    if (!API.server) { $('#airCheck').innerHTML = `<span style="color:var(--plasma)">Dry run: would transmit ${r.dur}s on ${esc(RAD.fmtFreq(hz))}. Nothing was sent.</span>`; return; }
+    $('#airCheck').innerHTML = '<span style="color:var(--crit)">● Transmitting…</span>';
+    try { const res = await API.transmit(r.blob, hz, $('#airPin').value, myName()); $('#airCheck').innerHTML = `<span style="color:var(--ok)">Sent ${r.dur}s on ${esc(res.freq)} as ${esc(res.callsign)}.</span>`; }
+    catch (e) { $('#airCheck').innerHTML = `<span class="error">Not sent: ${esc(e.message)}</span>`; }
+    refreshTx();
+  }
+
+  // ---------- broadcast stations
+  const SAMPLE = [['Capital FM', 'Kenya', 'pop, news'], ['Radio Citizen', 'Kenya', 'news, swahili'], ['BBC World Service', 'United Kingdom', 'news'], ['Radio France Internationale', 'France', 'news'], ['Voice of America', 'United States', 'news'], ['Deutsche Welle', 'Germany', 'news']];
+  async function searchStations() {
+    const cc = $('#stnCountry').value, q = $('#stnQ').value.trim();
+    if (!API.stations) {
+      $('#stnNote').textContent = 'On your server this searches 40,000+ live stations (radio-browser.info) and plays them here. The hosted test page can’t play outside audio, so these are example entries.';
+      R.stations = SAMPLE.filter(s => (!q || (s[0] + s[2]).toLowerCase().includes(q.toLowerCase()))).map(([name, country, tags], i) => ({ id: 's' + i, name, country, tags: tags.split(', '), sample: true }));
+      return renderStations();
+    }
+    $('#stnNote').textContent = 'Searching…';
+    try { R.stations = await API.stations(cc, q); $('#stnNote').textContent = 'Live stations from radio-browser.info, most popular first.'; }
+    catch (e) { R.stations = []; $('#stnNote').textContent = 'Station directory unavailable: ' + e.message; }
+    renderStations();
+  }
+  function renderStations(keep) {
+    $('#stnCount').textContent = R.stations.length ? R.stations.length + ' stations' : '';
+    $('#stnList').innerHTML = R.stations.map((s, i) => `<div class="stn" aria-current="${R.stn === s.id}"><b>${esc(s.name)}</b><span class="m">${esc([s.country, s.codec && s.bitrate ? `${s.codec} ${s.bitrate}k` : s.codec, (s.tags || []).slice(0, 3).join(', ')].filter(Boolean).join(' · '))}</span>
+      <div class="row">${s.sample ? '<span class="tag sim">example</span>' : `<button class="btn sm ${R.stn === s.id ? '' : 'primary'}" data-play="${i}">${R.stn === s.id ? 'Stop' : 'Play'}</button>`}${s.homepage ? `<a class="btn sm" href="${esc(s.homepage)}" target="_blank" rel="noopener">Website ↗</a>` : ''}</div></div>`).join('') || (keep ? '' : '<p class="empty">No stations found.</p>');
+    $('#stnList').onclick = e => { const b = e.target.closest('[data-play]'); if (!b) return; const s = R.stations[+b.dataset.play]; if (R.stn === s.id) return stopAll();
+      const url = location.protocol === 'https:' && /^http:/.test(s.url) ? `api/radio/play/${s.id}` : s.url; playStream(url, s.name); R.stn = s.id; renderStations(true); };
+  }
+
+  // ---------- public API
+  function listenNear(e) {
+    R.loc = { lat: e.lat, lon: e.lon, label: e.country || `${e.lat.toFixed(1)}°, ${e.lon.toFixed(1)}°` };
+    const pick = e.kind === 'aircraft' ? 121500000 : e.kind === 'maritime' || e.kind === 'radio' ? (API.server && R.sdr && R.sdr.available ? 156800000 : 2182000) : 7110000;
+    const ch = RAD.CHANNELS.find(c => c.hz === pick);
+    R.src = pick < 30e6 ? 'kiwi' : 'sdr';
+    location.hash = 'radio'; setTimeout(() => tune(ch.hz, ch.mode, ch.name), 30);
+  }
+  function show() { renderIncidents(); renderLog(); renderIc(); display(); meter(); renderSource(); refreshSdr(); refreshTx(); if (!R.stations.length) searchStations(); }
+  function init() {
+    const groups = [...new Set(RAD.CHANNELS.map(c => c.group))];
+    $('#chList').innerHTML = groups.map(g => `<div class="label grp">${esc(g)}</div>` + RAD.CHANNELS.filter(c => c.group === g).map(c => `<button class="ch" data-hz="${c.hz}" aria-pressed="false"><b>${esc(c.name)}</b><span>${esc(RAD.fmtFreq(c.hz))} ${c.mode.toUpperCase()}</span><small>${esc(c.note)}</small></button>`).join('')).join('');
+    $('#chList').onclick = e => { const b = e.target.closest('.ch'); if (!b) return; const c = RAD.CHANNELS.find(x => x.hz === +b.dataset.hz); tune(c.hz, c.mode, c.name); if (R.playing && R.src === 'sdr' && API.server) listen(); };
+    $('#incKinds').innerHTML = KINDS.map(([k, l]) => `<button type="button" class="tchip" data-k="${k}" aria-pressed="${R.kind === k}" style="color:${k ? 'var(--crit)' : 'var(--ion)'}"><i style="background:currentColor"></i>${l}</button>`).join('');
+    $('#incKinds').onclick = e => { const b = e.target.closest('.tchip'); if (!b) return; R.kind = b.dataset.k; $$('#incKinds .tchip').forEach(x => x.setAttribute('aria-pressed', x === b)); renderIncidents(); };
+    const ctry = Object.keys(RAD.NUMBERS).sort(); $('#numCountry').innerHTML = ctry.map(c => `<option ${c === 'Kenya' ? 'selected' : ''}>${esc(c)}</option>`).join(''); $('#numCountry').onchange = renderNumbers; renderNumbers();
+    $('#rxSrc').onclick = e => { const b = e.target.closest('button'); if (!b) return; R.src = b.dataset.src; renderSource(); };
+    $('#rxTune').onclick = () => { const v = parseFloat($('#rxHz').value); if (!(v > 0)) return display('Enter a frequency in MHz, e.g. 156.800 or 2.182'); tune(Math.round(v * 1e6), $('#rxMode').value, null); if (R.playing && API.server) listen(); };
+    $('#rxListen').onclick = listen;
+    $('#rxStop').onclick = async () => { stopAll(); if (API.sdrStop && R.sdr && R.sdr.running) { R.sdr = await API.sdrStop().catch(() => R.sdr); display(); } };
+    $('#rxScanM').onclick = () => scan([156800000, 145500000, 146520000], 'fm');
+    $('#rxScanA').onclick = () => scan([121500000, 243000000], 'am');
+    $('#rxVol').oninput = e => { R.audioEl.volume = +e.target.value; };
+    $('#rxDistressOnly').onchange = e => { R.distressOnly = e.target.checked; renderLog(); };
+    $('#tbMode').onclick = e => { const b = e.target.closest('button'); if (!b) return; R.tbMode = b.dataset.m; $$('#tbMode button').forEach(x => x.setAttribute('aria-pressed', x === b)); $('#tbIc').hidden = R.tbMode !== 'ic'; $('#tbAir').hidden = R.tbMode !== 'air'; if (R.tbMode === 'air') refreshTx(); };
+    $('#icName').value = store.get('icName', ''); $('#icName').onchange = e => store.set('icName', e.target.value.trim());
+    $('#icForm').onsubmit = async e => { e.preventDefault(); const t = $('#icText').value.trim(); if (!t) return; try { await API.intercomText(myName(), $('#icChan').value, t); $('#icText').value = ''; renderIc(); } catch (x) { $('#icNote').textContent = 'Could not send: ' + x.message; } };
+    bindPTT($('#icPTT'), icDown, icUp);
+    bindPTT($('#airPTT'), airDown, airUp);
+    $('#airHz').oninput = airCheck;
+    document.addEventListener('keydown', e => { if (S.view !== 'radio' || e.code !== 'Space' || e.repeat || /INPUT|TEXTAREA|SELECT|BUTTON/.test(document.activeElement.tagName)) return; e.preventDefault(); R.tbMode === 'air' ? airDown() : icDown(); });
+    document.addEventListener('keyup', e => { if (S.view !== 'radio' || e.code !== 'Space' || /INPUT|TEXTAREA|SELECT|BUTTON/.test(document.activeElement.tagName)) return; R.tbMode === 'air' ? airUp() : icUp(); });
+    const cs = [...new Set(C.CITIES.map(c => [c.cc, c.country]).map(JSON.stringify))].map(JSON.parse).sort((a, b) => a[1].localeCompare(b[1]));
+    $('#stnCountry').innerHTML = '<option value="">Any country</option>' + cs.map(([cc, n]) => `<option value="${cc}" ${cc === 'KE' ? 'selected' : ''}>${esc(n)}</option>`).join('');
+    $('#stnForm').onsubmit = e => { e.preventDefault(); searchStations(); };
+    setInterval(() => { if (S.view === 'radio' && API.server) refreshSdr(); }, 15000);
+    renderIncidents(); meter();
+  }
+  return { init, show, onTx, onSdr, onIntercom, renderIncidents, listenNear };
+})();
+
+// ============================================================ SOURCES
+const SIM_SOURCES = [['x', 'X (Twitter)', false, 'X_BEARER_TOKEN — X API plan with recent-search access'], ['facebook', 'Facebook / Instagram', false, 'FB_ACCESS_TOKEN + FB_PAGE_IDS — Meta Graph API, public pages'],
+  ['linkedin', 'LinkedIn', false, 'LINKEDIN_TOKEN + LINKEDIN_ORG_URNS — organisation pages (no public search API)'], ['reddit', 'Reddit', true, null], ['mastodon', 'Mastodon', true, null],
+  ['bluesky', 'Bluesky', true, 'BSKY_HANDLE + BSKY_APP_PASSWORD — free app password'], ['hackernews', 'Hacker News', true, null], ['youtube', 'YouTube', true, 'YOUTUBE_API_KEY — free Google Cloud key'], ['news', 'World news (GDELT)', true, null], ['radio', 'Radio (local SDR)', true, 'an RTL-SDR dongle; TRANSCRIBE_URL for transcripts']];
+async function renderSources() {
+  const live = await API.sources().catch(() => null);
+  $('#srcNote').textContent = live ? 'Live status of every connector on your Scavenge server. Keyless sources run immediately; credentialed platforms start as soon as you add their keys to .env and restart.'
+    : 'This test site runs on simulated data, so every feed below is mocked. On your own Scavenge server these connectors pull real posts: keyless ones immediately, credentialed ones once you add keys to .env.';
+  const rows = live ? live.connectors.map(c => [c.id, c.label, c.free, c.needs, c.enabled, c.status]) : SIM_SOURCES.map(([id, l, f, n]) => [id, l, f, n, true, { ok: true, info: 'Simulated in test site' }]);
+  const earthRows = live ? live.earth : [{ label: 'USGS earthquakes', ok: true, info: 'Simulated' }, { label: 'NASA EONET natural events', ok: true, info: 'Simulated' }, { label: 'GDELT news events', ok: true, info: 'Simulated' }, { label: 'Open-Meteo weather', ok: true, info: 'Simulated' }, { label: 'NASA GIBS satellite', ok: null, info: 'Server only — test site shows a rendered Earth' }, { label: 'Aircraft emergency squawks (adsb.lol)', ok: true, info: 'Simulated' }, { label: 'GDACS disaster alerts', ok: true, info: 'Simulated' }, { label: 'US weather warnings (NWS)', ok: true, info: 'Simulated' }, { label: 'Radio directory & public SDRs', ok: null, info: 'Server only' }];
+  const st = (ok, enabled) => ok === true ? ['var(--ok)', 'Online'] : ok === false ? ['var(--crit)', 'Error'] : enabled === false ? ['var(--dim)', 'Needs keys'] : ['var(--plasma)', 'Waiting'];
+  $('#srcGrid').innerHTML = rows.map(([id, l, free, needs, enabled, s]) => { const [col, txt] = st(s?.ok ?? null, enabled); return `<div class="panel"><header><h2 style="color:${PLAT[id]?.color || 'var(--fg)'}">${esc(l)}</h2><span class="st" style="color:${col}"><i style="background:${col}"></i>${txt}</span></header>
+    <p class="note" style="margin:0">${free ? 'Free tier available.' : 'Requires a paid or approved API plan.'} ${needs ? 'Set ' + esc(needs) + '.' : 'No key needed.'}</p>${s?.info ? `<p class="mono" style="font-size:11px;color:var(--dim);margin:8px 0 0">${esc(s.info)}${s.at ? ' · ' + ago(s.at) + ' ago' : ''}</p>` : ''}</div>`; }).join('')
+    + earthRows.map(e => { const [col, txt] = st(e.ok, true); return `<div class="panel"><header><h2>${esc(e.label)}</h2><span class="st" style="color:${col}"><i style="background:${col}"></i>${txt}</span></header><p class="note" style="margin:0">Free, keyless earth-observation feed.</p><p class="mono" style="font-size:11px;color:var(--dim);margin:8px 0 0">${esc(e.info || '')}</p></div>`; }).join('');
+}
+
+// ============================================================ routing & render loop
+const VIEWS = ['overview', 'feeds', 'alerts', 'radio', 'analytics', 'tv', 'sources'];
+function route() {
+  const v = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'overview';
+  S.view = v;
+  VIEWS.forEach(n => ($('#v-' + n).hidden = n !== v));
+  $$('#tabs a').forEach(a => { if (a.getAttribute('href') === '#' + v) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
+  if (v === 'overview') renderOverview(true);
+  if (v === 'feeds') Feed.reset();
+  if (v === 'alerts') renderAlerts();
+  if (v === 'analytics') renderAnalytics(true);
+  if (v === 'tv') TV.render();
+  if (v === 'radio') Radio.show();
+  if (v === 'sources') renderSources();
+  if (S.pinned && scrollY > 0) scrollTo({ top: 0 });
+  updateBadge();
+}
+let isDirty = true, lastMap = 0;
+function dirty() { isDirty = true; }
+function loop() {
+  if (isDirty) {
+    isDirty = false;
+    renderKPIs();
+    if (Date.now() - lastMap > 1500) { lastMap = Date.now(); MapView.render(); if (!S.sel && S.sideTab === 'inspect') renderDetail(); }
+    if (S.sideTab === 'posts' && Date.now() - sidePostsLast > 2500) renderSidePosts();
+    if (S.view === 'overview') renderOverview();
+    if (S.view === 'feeds') Feed.flush();
+    if (S.view === 'analytics') renderAnalytics();
+  }
+  setTimeout(loop, 700);
+}
+setInterval(() => { if (S.sideTab === 'events') renderEvents(); }, 30000);
+setInterval(() => Radio.renderIncidents(), 20000);
+
+(async function start() {
+  try { await API.boot(); } catch (e) { console.error(e); API.sim(); }
+  chartDefaults();
+  countryOptions($('#fCountry'), 'All countries');
+  renderWatch(); Feed.init(); initAlerts(); initAnalytics(); TV.init(); Radio.init();
+  MapView.init(); placeSide(); syncToolbar(); renderDetail();
+  window.addEventListener('hashchange', route); route();
+  loop();
+  $('#boot').classList.add('done'); setTimeout(() => $('#boot').remove(), 600);
+})();
+})();
+</script>
