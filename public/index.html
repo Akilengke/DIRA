@@ -316,6 +316,7 @@ tr.on td { background: rgba(240,180,60,.12); }
 .fq:hover { border-color: var(--ion); }
 .authbtn { border: 1px solid var(--line-2); background: var(--hull); padding: 6px 12px; cursor: pointer; font: 600 11px/1 var(--f-display); letter-spacing: .14em; text-transform: uppercase; color: var(--fg); }
 .authbtn.on { border-color: var(--ok); color: var(--ok); }
+.authbtn.warn { color: var(--plasma); border-color: var(--plasma); }
 .modal { position: fixed; inset: 0; z-index: 98; background: rgba(2,4,6,.72); display: grid; place-items: center; padding: 16px; }
 .modal[hidden] { display: none; }
 .modalbox { width: min(420px, 100%); display: grid; gap: 12px; }
@@ -750,11 +751,19 @@ SCAVENGE_DEMO=1 node server/index.js   # offline simulator</div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 <div class="modal" id="authModal" hidden role="dialog" aria-modal="true" aria-labelledby="authTitle">
   <form class="panel modalbox" id="authForm">
-    <header><h2 id="authTitle">Operator sign-in</h2><button class="btn sm" type="button" id="authClose" aria-label="Close">×</button></header>
+    <header><h2 id="authTitle">Admin sign-in</h2><button class="btn sm" type="button" id="authClose" aria-label="Close">×</button></header>
     <p class="note" id="authNote" style="margin-top:0"></p>
-    <div class="field" id="authCodeF"><label class="label" for="authCode">Setup code</label><input id="authCode" autocomplete="one-time-code" placeholder="8 characters from the server log"></div>
-    <div class="field"><label class="label" for="authPw">Password</label><input id="authPw" type="password" autocomplete="current-password"></div>
-    <div class="field" id="authPw2F"><label class="label" for="authPw2">Confirm password</label><input id="authPw2" type="password" autocomplete="new-password"></div>
+    <div id="authIn">
+      <div class="field"><label class="label" for="authUser">Username</label><input id="authUser" autocomplete="username" autocapitalize="off" spellcheck="false"></div>
+      <div class="field"><label class="label" for="authPw">Password</label><input id="authPw" type="password" autocomplete="current-password"></div>
+    </div>
+    <div id="authChg" hidden>
+      <div class="warnbox" id="authDef" hidden style="margin-bottom:10px"><b>Default password in use</b><br>Anyone who knows admin / admin can control this console. Choose a new password now.</div>
+      <div class="field"><label class="label" for="authCur">Current password</label><input id="authCur" type="password" autocomplete="current-password"></div>
+      <div class="field"><label class="label" for="authNewUser">Username</label><input id="authNewUser" autocomplete="username" autocapitalize="off" spellcheck="false"></div>
+      <div class="field"><label class="label" for="authNew">New password</label><input id="authNew" type="password" autocomplete="new-password" minlength="8"></div>
+      <div class="field"><label class="label" for="authNew2">Confirm new password</label><input id="authNew2" type="password" autocomplete="new-password"></div>
+    </div>
     <p class="error" id="authErr" hidden></p>
     <div class="row"><button class="btn primary" type="submit" id="authGo">Sign in</button><button class="btn" type="button" id="authOut" hidden>Sign out</button></div>
   </form>
@@ -895,7 +904,8 @@ const API = {
     this.radar = () => g('api/weather/radar');
     this.authStatus = () => g('api/auth/status');
     this.authSetup = (code, password) => send('api/auth/setup', 'POST', { code, password });
-    this.authLogin = password => send('api/auth/login', 'POST', { password });
+    this.authLogin = (username, password) => send('api/auth/login', 'POST', { username, password });
+    this.authChange = (current, username, password) => send('api/auth/change', 'POST', { current, username, password });
     this.authLogout = () => send('api/auth/logout', 'POST', {});
     this.accounts = () => g('api/accounts');
     this.accConnect = body => send('api/accounts/connect', 'POST', body);
@@ -2546,7 +2556,7 @@ const Route = window.Route = (() => {
     const st = Auth.state(), gated = API.server && !st.signedIn;
     const fv = ($('#rtFrom') || {}).value ?? last.from, tv = ($('#rtTo') || {}).value ?? last.to;
     let out = '';
-    if (gated) out = `<div class="warnbox" style="margin-top:12px"><b>Operators only</b><br>Route planning uses the operator's traffic key. <button class="btn sm" id="rtSignin">${st.setup ? 'Sign in' : 'Set up sign-in'}</button></div>`;
+    if (gated) out = `<div class="warnbox" style="margin-top:12px"><b>Admin only</b><br>Sign in as admin to plan routes. <button class="btn sm" id="rtSignin">Sign in</button></div>`;
     else if (busy) out = '<p class="note" style="margin-top:12px">Analysing routes: live traffic, closures, flooding, speed cameras and limits…</p>';
     else if (err) out = `<p class="error" style="margin-top:12px">${esc(err)}</p>`;
     else if (plan) {
@@ -2592,19 +2602,18 @@ const Auth = (() => {
   async function refresh() {
     if (!API.authStatus) st = { setup: true, signedIn: true, sim: true };
     else try { st = await API.authStatus(); } catch {}
-    const b = $('#authBtn'); b.hidden = !!st.sim; b.textContent = st.sim ? 'Simulation' : st.signedIn ? 'Operator ✓' : st.setup ? 'Sign in' : 'Set up sign-in'; b.classList.toggle('on', !!st.signedIn && !st.sim);
+    const b = $('#authBtn'); b.hidden = !!st.sim; b.textContent = st.sim ? 'Simulation' : st.signedIn ? (st.defaultPassword ? '⚠ ' : '') + (st.user || 'Admin') + ' ✓' : 'Sign in'; b.classList.toggle('on', !!st.signedIn && !st.sim); b.classList.toggle('warn', !!st.defaultPassword);
     return st;
   }
   function open() {
-    if (st.sim) { toast({ rule: 'Test site', post: { platform: 'x', text: 'There is no operator sign-in on the test site. On your server, Sign in protects settings and connected accounts.' }, hits: [] }); return; }
-    const setup = !st.setup;
-    $('#authTitle').textContent = st.signedIn ? 'Signed in as operator' : setup ? 'Set up operator sign-in' : 'Operator sign-in';
-    $('#authNote').textContent = st.signedIn ? 'You can change settings and manage connected accounts. Sign out on shared computers.'
-      : setup ? 'First run: enter the one-time setup code printed in the server log when Scavenge started, then choose a password (10+ characters).' : 'Sign in to change settings, alert rules and connected accounts.';
-    $('#authCodeF').hidden = !setup || st.signedIn; $('#authPw2F').hidden = !setup || st.signedIn; $('#authPw').parentElement.hidden = st.signedIn;
-    $('#authGo').hidden = st.signedIn; $('#authGo').textContent = setup ? 'Create password' : 'Sign in'; $('#authOut').hidden = !st.signedIn;
+    if (st.sim) { toast({ kind: 'Admin', rule: 'Test site', text: 'There is no admin sign-in on the test site. On your server, Sign in protects settings and connected accounts.' }); return; }
+    const on = st.signedIn;
+    $('#authTitle').textContent = on ? 'Admin · ' + (st.user || 'admin') : 'Admin sign-in';
+    $('#authNote').textContent = on ? 'Signed in. Change the username or password below, or sign out on shared computers.' : 'Sign in to change settings, alert rules, connected accounts and to plan routes.';
+    $('#authIn').hidden = on; $('#authChg').hidden = !on; $('#authDef').hidden = !st.defaultPassword;
+    $('#authGo').textContent = on ? 'Change password' : 'Sign in'; $('#authOut').hidden = !on;
     $('#authErr').hidden = true; $('#authForm').reset(); $('#authModal').hidden = false;
-    setTimeout(() => (setup ? $('#authCode') : $('#authPw')).focus(), 30);
+    if (on) $('#authNewUser').value = st.user || ''; setTimeout(() => (on ? $('#authCur') : $('#authUser')).focus(), 30);
   }
   const close = () => { $('#authModal').hidden = true; };
   $('#authBtn').onclick = open; $('#authClose').onclick = close;
@@ -2614,10 +2623,16 @@ const Auth = (() => {
   $('#authForm').onsubmit = async e => {
     e.preventDefault(); const err = $('#authErr'); err.hidden = true;
     try {
-      if (!st.setup) { if ($('#authPw').value !== $('#authPw2').value) throw new Error('The passwords do not match.'); await API.authSetup($('#authCode').value, $('#authPw').value); }
-      else await API.authLogin($('#authPw').value);
-      await refresh(); close(); Accounts.render(); Route.render();
-      toast({ rule: 'Signed in', post: { platform: 'x', text: 'Operator access granted on this browser for 30 days.' }, hits: [] });
+      if (st.signedIn) {
+        if ($('#authNew').value !== $('#authNew2').value) throw new Error('The new passwords do not match.');
+        await API.authChange($('#authCur').value, $('#authNewUser').value, $('#authNew').value);
+        await refresh(); close(); toast({ kind: 'Admin', rule: 'Password changed', text: 'Other browsers were signed out.' });
+      } else {
+        const r = await API.authLogin($('#authUser').value, $('#authPw').value);
+        await refresh(); close(); Accounts.render(); Route.render();
+        if (r && r.defaultPassword) setTimeout(open, 400);
+        else toast({ kind: 'Admin', rule: 'Signed in', text: 'Admin access on this browser for 30 days.' });
+      }
     } catch (x) { err.textContent = x.message; err.hidden = false; }
   };
   return { refresh, open, state: () => st };
@@ -2661,7 +2676,7 @@ const Accounts = (() => {
     $('#accSum').textContent = `${data.accounts.length} connected`;
     $('#accIntro').innerHTML = data.sim ? 'Test site: connections here are simulated and nothing is sent anywhere. On your server, each button opens the platform’s own sign-in page; Scavenge stores the resulting read-only token encrypted and monitors trends through it.'
       : 'Sign in to each platform on its own login page. Scavenge never sees your platform passwords: it receives a read-only access token, stores it encrypted on your server, and uses it to monitor your watch terms and alert rules. Connected accounts take priority over anonymous access.';
-    $('#accGate').innerHTML = data.sim || st.signedIn ? '' : `<div class="warnbox"><b>${st.setup ? 'Operator sign-in required' : 'Set up operator sign-in first'}</b><br>${st.setup ? 'Only the operator can connect or remove accounts.' : 'Your server printed a one-time setup code in its log. Use it to create the operator password before connecting accounts.'} <button class="btn sm" data-signin="1">${st.setup ? 'Sign in' : 'Set up'}</button></div>`;
+    $('#accGate').innerHTML = data.sim || st.signedIn ? '' : `<div class="warnbox"><b>Admin sign-in required</b><br>Only the admin can connect or remove accounts. <button class="btn sm" data-signin="1">Sign in</button></div>`;
     const tk = (data.keys || {}).tomtom || {};
     const keysPanel = `<div class="panel" data-plat="tomtom"><header><h2 style="color:var(--plasma)">Traffic data · TomTom</h2><span class="chipst" style="color:${tk.configured ? 'var(--ok)' : 'var(--plasma)'}">${tk.configured ? 'Key set' : 'Key needed'}</span></header>
       <p class="note" style="margin:0"><b style="color:var(--fg)">Powers:</b> the traffic layer: live congestion, accidents, closures, road works and flooded roads, and the cause shown for heavy jams.</p>

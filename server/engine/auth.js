@@ -1,6 +1,6 @@
 // Operator sign-in and the encrypted vault for platform tokens.
-//  • First run: the server prints a one-time setup code to its log. Whoever holds the code chooses the operator
-//    password (stored as a scrypt hash). Nobody can claim the site without access to the server logs.
+//  • Admin sign-in with a username and password (scrypt hash). First run creates the default admin / admin
+//    (override with SCAVENGE_ADMIN_USER / SCAVENGE_ADMIN_PASSWORD). The UI asks to change a default password.
 //  • Sessions are random 256-bit tokens in an HttpOnly, SameSite=Lax cookie (Secure over HTTPS), valid 30 days.
 //  • Secrets (OAuth tokens, app credentials) are encrypted with AES-256-GCM using SCAVENGE_SECRET or a key
 //    generated into data/.vault-key on first run.
@@ -14,11 +14,6 @@ function createAuth(dataDir) {
   let op = {}; try { op = JSON.parse(fs.readFileSync(file, 'utf8')); } catch {}
   const save = () => { fs.writeFileSync(file + '.tmp', JSON.stringify(op)); fs.renameSync(file + '.tmp', file); try { fs.chmodSync(file, 0o600); } catch {} };
   if (!op.sessions) op.sessions = {};
-  let setupCode = null;
-  if (!op.hash) {
-    setupCode = (process.env.SCAVENGE_SETUP_CODE || crypto.randomBytes(6).toString('base64url').replace(/[-_]/g, 'x').slice(0, 8)).toUpperCase();
-    console.log(`\n  ◉ SCAVENGE operator setup code: ${setupCode}\n    Open the site, choose “Sign in”, and enter this code to create the operator password.\n`);
-  }
 
   // ---- vault
   const keyFile = path.join(dataDir, '.vault-key');
@@ -41,6 +36,12 @@ function createAuth(dataDir) {
     if (f[0] >= 8) throw Object.assign(new Error('Too many attempts. Wait 15 minutes and try again.'), { code: 429 });
   }
   const failed = ip => { const f = fails.get(ip) || [0, Date.now()]; f[0]++; fails.set(ip, f); };
+  const ready = (async () => {
+    if (op.hash) { if (!op.user) { op.user = 'admin'; save(); } return; }
+    const user = process.env.SCAVENGE_ADMIN_USER || 'admin', pw = process.env.SCAVENGE_ADMIN_PASSWORD || 'admin';
+    op.user = user; op.salt = crypto.randomBytes(16).toString('base64'); op.hash = await hashPw(pw, op.salt); op.isDefault = !process.env.SCAVENGE_ADMIN_PASSWORD; op.created = Date.now(); save();
+    console.log(`\n  ◉ SCAVENGE admin sign-in created: user "${user}"${op.isDefault ? ', password "admin" (change it after signing in)' : ''}\n`);
+  })();
 
   function newSession(res, req) {
     const id = crypto.randomBytes(32).toString('base64url');
@@ -56,28 +57,35 @@ function createAuth(dataDir) {
   }
   const isOperator = req => !!session(req) || (process.env.SCAVENGE_TOKEN && req.headers.authorization === 'Bearer ' + process.env.SCAVENGE_TOKEN);
 
-  async function setup({ code, password }, req, res) {
+  async function login({ username, password }, req, res) {
+    await ready;
     const ip = req.socket.remoteAddress; throttle(ip);
-    if (op.hash) throw Object.assign(new Error('The operator account already exists. Sign in instead.'), { code: 409 });
-    if (!setupCode || !same(String(code || '').trim().toUpperCase(), setupCode)) { failed(ip); throw Object.assign(new Error('That setup code is not right. It is printed in the server log when Scavenge starts.'), { code: 403 }); }
-    if (!password || String(password).length < 10) throw Object.assign(new Error('Choose a password of at least 10 characters.'), { code: 400 });
-    const salt = crypto.randomBytes(16).toString('base64');
-    op.salt = salt; op.hash = await hashPw(String(password), salt); op.created = Date.now(); setupCode = null; save();
+    const okUser = same(String(username || '').trim().toLowerCase(), String(op.user).toLowerCase());
+    const okPw = same(await hashPw(String(password || ''), op.salt), op.hash);
+    if (!okUser || !okPw) { failed(ip); throw Object.assign(new Error('Wrong username or password.'), { code: 403 }); }
+    fails.delete(ip); newSession(res, req); return { ok: true, defaultPassword: !!op.isDefault };
+  }
+  // change the admin username and/or password (signed in, current password required); signs out other browsers
+  async function change({ current, username, password }, req, res) {
+    await ready;
+    if (!isOperator(req)) throw Object.assign(new Error('Sign in first.'), { code: 401 });
+    const ip = req.socket.remoteAddress; throttle(ip);
+    if (!same(await hashPw(String(current || ''), op.salt), op.hash)) { failed(ip); throw Object.assign(new Error('Current password is wrong.'), { code: 403 }); }
+    const u = String(username || op.user).trim();
+    if (!/^[\w.@-]{3,40}$/.test(u)) throw Object.assign(new Error('Username: 3–40 letters, digits, dots, dashes or @.'), { code: 400 });
+    if (!password || String(password).length < 8) throw Object.assign(new Error('Choose a new password of at least 8 characters.'), { code: 400 });
+    if (String(password) === 'admin') throw Object.assign(new Error('Choose a password other than the default.'), { code: 400 });
+    op.user = u; op.salt = crypto.randomBytes(16).toString('base64'); op.hash = await hashPw(String(password), op.salt); op.isDefault = false; op.sessions = {}; save();
     newSession(res, req); return { ok: true };
   }
-  async function login({ password }, req, res) {
-    const ip = req.socket.remoteAddress; throttle(ip);
-    if (!op.hash) throw Object.assign(new Error('Set up the operator account first with the setup code from the server log.'), { code: 409 });
-    if (!same(await hashPw(String(password || ''), op.salt), op.hash)) { failed(ip); throw Object.assign(new Error('Wrong password.'), { code: 403 }); }
-    fails.delete(ip); newSession(res, req); return { ok: true };
-  }
+  const setup = () => { throw Object.assign(new Error('Sign in with the admin username and password.'), { code: 410 }); };
   function logout(req, res) {
     const id = cookies(req).scv_session; if (id) { delete op.sessions[crypto.createHash('sha256').update(id).digest('hex')]; save(); }
     res.setHeader('Set-Cookie', 'scv_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0'); return { ok: true };
   }
-  const status = req => ({ setup: !!op.hash, signedIn: !!isOperator(req) });
+  const status = req => { const on = !!isOperator(req); return { setup: true, signedIn: on, user: on ? op.user : null, defaultPassword: on && !!op.isDefault }; };
 
-  return { setup, login, logout, status, isOperator, isSetup: () => !!op.hash, seal, open, cookies, secure };
+  return { setup, login, change, logout, status, ready, isOperator, isSetup: () => true, seal, open, cookies, secure };
 }
 
 module.exports = { createAuth };

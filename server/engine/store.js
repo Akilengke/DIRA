@@ -3,8 +3,11 @@
 const fs = require('fs');
 const path = require('path');
 
-const DATA = process.env.SCAVENGE_DATA || path.join(__dirname, '../../data');
-fs.mkdirSync(DATA, { recursive: true });
+// SCAVENGE_DATA keeps data outside the app folder so it survives redeploys ("~/scavenge-data" works).
+const FALLBACK = path.join(__dirname, '../../data');
+let DATA = (process.env.SCAVENGE_DATA || '').replace(/^~(?=$|\/)/, require('os').homedir()) || FALLBACK;
+try { fs.mkdirSync(DATA, { recursive: true }); fs.accessSync(DATA, fs.constants.W_OK); }
+catch (e) { console.warn('Data folder ' + DATA + ' not writable (' + e.message + '); using ' + FALLBACK); DATA = FALLBACK; fs.mkdirSync(DATA, { recursive: true }); }
 const file = n => path.join(DATA, n + '.json');
 const load = (n, d) => { try { return JSON.parse(fs.readFileSync(file(n), 'utf8')); } catch { return d; } };
 const save = (n, v) => { fs.writeFileSync(file(n) + '.tmp', JSON.stringify(v, null, 2)); fs.renameSync(file(n) + '.tmp', file(n)); };

@@ -10,7 +10,10 @@ const wait = ms => new Promise(r => setTimeout(r, ms));
 const ok = (c, m) => { if (!c) { console.error('✗ ' + m); srv.kill(); process.exit(1); } console.log('✓ ' + m); };
 (async () => {
   await wait(1500);
-  const j = async (u, o) => (await fetch(base + u, o)).json();
+  const li = await fetch(base + '/api/auth/login', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'admin', password: 'admin' }) });
+  const cookie = (li.headers.get('set-cookie') || '').split(';')[0];
+  ok(li.status === 200 && cookie, 'admin sign-in');
+  const j = async (u, o = {}) => (await fetch(base + u, Object.assign({}, o, { headers: Object.assign({ Cookie: cookie }, o.headers) }))).json();
   ok((await j('/api/health')).ok, 'health');
   ok((await j('/api/feed?limit=10')).length === 10, 'feed');
   ok((await j('/api/trends')).length > 0, 'trends');
@@ -29,11 +32,13 @@ const ok = (c, m) => { if (!c) { console.error('✗ ' + m); srv.kill(); process.
   const icv = await j('/api/intercom', { method: 'POST', headers: { 'Content-Type': 'audio/webm', 'X-From': 'Test' }, body: Buffer.alloc(3000, 7) });
   ok(icv.audio && (await fetch(base + '/' + icv.audio)).ok, 'intercom voice');
   const ts = await j('/api/tx/status'); ok(ts.ready === false && /switched off/.test(ts.reason), 'transmit off by default');
-  const tr = await fetch(base + '/api/tx', { method: 'POST', headers: { 'X-Freq': '145500000' }, body: Buffer.alloc(3000) });
+  const tr = await fetch(base + '/api/tx', { method: 'POST', headers: { 'X-Freq': '145500000', Cookie: cookie }, body: Buffer.alloc(3000) });
   ok(tr.status === 403, 'transmit refused when disabled');
   ok(typeof (await j('/api/sdr/status')).available === 'boolean', 'sdr status');
   const rt = await fetch(base + '/api/route', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: 'JKIA', to: 'Westlands' }) });
-  ok(rt.status === 401, 'route planning needs the operator');
+  ok(rt.status === 401, 'route planning needs the admin');
+  const rp = await j('/api/route', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ from: 'JKIA', to: 'Westlands' }) });
+  ok(rp.routes && rp.routes.length >= 2 && rp.best, 'route planned when signed in');
   ok((await (await fetch(base + '/js/routeplan.js')).text()).includes('ScavengeRoute'), 'route module served');
   const page = await (await fetch(base + '/')).text();
   ok(page.includes('SCAVENGE'), 'frontend served');

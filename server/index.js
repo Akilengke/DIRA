@@ -71,6 +71,7 @@ const routes = {
   'POST /api/auth/setup': async (q, req, res) => auth.setup(await readBody(req), req, res),
   'POST /api/auth/login': async (q, req, res) => auth.login(await readBody(req), req, res),
   'POST /api/auth/logout': (q, req, res) => auth.logout(req, res),
+  'POST /api/auth/change': async (q, req, res) => auth.change(await readBody(req), req, res),
   'GET /api/accounts': (q, req) => { const l = accounts.list(req); return auth.isOperator(req) ? l : { platforms: l.platforms.map(p => Object.assign(p, { appClientId: null, redirect: null })), accounts: l.accounts.map(a => ({ platform: a.platform, handle: a.handle, status: a.status })), callbackBase: null, keys: { tomtom: { configured: l.keys.tomtom.configured } } }; },
   'POST /api/accounts/connect': async (q, req) => { const b = await readBody(req); return accounts.start(b.platform, b, req); },
   'POST /api/accounts/app': async (q, req) => { const b = await readBody(req); return b.clear ? accounts.clearApp(b.platform) : accounts.setApp(b.platform, b); },
@@ -109,7 +110,7 @@ const routes = {
   'GET /api/flights/route': q => demoSim ? (() => { const f = demoSim.flights().find(x => x.flight === q.get('callsign')); const A = radioRef.AIRPORTS; return f ? { codes: f.from + '-' + f.to, plausible: true, airports: [A.find(a => a.icao === f.from), A.find(a => a.icao === f.to)] } : null; })() : flights.route(q.get('callsign'), q.get('lat'), q.get('lon')),
   'GET /api/traffic/incidents': q => demoSim ? demoSim.traffic() : traffic.incidents(Object.fromEntries(['lamin', 'lomin', 'lamax', 'lomax'].map(k => [k, q.get(k)]))),
   'POST /api/route': async (q, req) => {
-    if (!auth.isOperator(req)) throw Object.assign(new Error(auth.isSetup() ? 'Route planning is for operators. Sign in first.' : 'Set up the operator sign-in first (Sign in → setup code from the server log).'), { code: 401 });
+    if (!auth.isOperator(req)) throw Object.assign(new Error('Route planning is for the admin. Sign in first.'), { code: 401 });
     const b = await readBody(req);
     if (demoSim) return demoSim.route(b.from, b.to);
     return routing.plan({ from: b.from, to: b.to });
@@ -155,7 +156,7 @@ async function handle(req, res) {
   }
   if (u.pathname.startsWith('/api/oauth/callback/')) {
     const platform = path.basename(u.pathname);
-    if (!auth.isOperator(req)) { res.writeHead(302, { Location: '/?account_error=' + encodeURIComponent('Sign in as the operator before connecting accounts.') + '#accounts' }); return res.end(); }
+    if (!auth.isOperator(req)) { res.writeHead(302, { Location: '/?account_error=' + encodeURIComponent('Sign in as admin before connecting accounts.') + '#accounts' }); return res.end(); }
     try { const a = await accounts.callback(platform, u.searchParams); res.writeHead(302, { Location: `/?connected=${encodeURIComponent(platform)}&handle=${encodeURIComponent(a.handle || '')}#accounts` }); }
     catch (e) { res.writeHead(302, { Location: '/?account_error=' + encodeURIComponent(e.message.slice(0, 200)) + '#accounts' }); }
     return res.end();
@@ -173,7 +174,7 @@ async function handle(req, res) {
   if (route) {
     const open = /^\/api\/auth\//.test(u.pathname);
     const needsOperator = !open && req.method !== 'GET' && (auth.isSetup() || /^\/api\/accounts/.test(u.pathname) || TOKEN);
-    if (needsOperator && !auth.isOperator(req)) return send(res, 401, { error: auth.isSetup() ? 'Sign in as the operator to make changes.' : 'Set up the operator sign-in first (Sign in → setup code from the server log).' });
+    if (needsOperator && !auth.isOperator(req)) return send(res, 401, { error: 'Sign in as admin to make changes.' });
     if (req.method !== 'GET' && !open && req.headers.origin && !sameOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
     try { return send(res, 200, await route(u.searchParams, req, res)); }
     catch (e) { return send(res, e.code || 500, { error: e.message }); }

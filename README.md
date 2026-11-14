@@ -68,10 +68,11 @@ Respect each platform's terms of service and local privacy law when monitoring.
   and PIN. It is limited to your licensed bands, never transmits on aviation or beacon frequencies, always releases PTT, and every over is logged.
   Never send a false distress call. Listening to police and emergency-service radio is restricted in some countries.
 
-## Operator sign-in & connected accounts
+## Admin sign-in & connected accounts
 
-- **First run** prints a one-time setup code in the server log. Open the site → **Sign in** → enter the code and choose
-  the operator password. After that, every change (rules, watch terms, accounts, intercom) needs the operator session.
+- **Admin sign-in**: username `admin`, password `admin` by default (or set `SCAVENGE_ADMIN_USER` / `SCAVENGE_ADMIN_PASSWORD`
+  before first start). After signing in with the default password, Scavenge asks you to choose a new one; until you do,
+  the Sign-in button shows a ⚠. Every change (rules, watch terms, accounts, intercom, route planning) needs the admin session.
 - **Accounts tab**: sign in to X, Reddit, Mastodon, Bluesky, YouTube, Facebook/Instagram and LinkedIn on each platform's
   own login page (OAuth; Bluesky uses an app password). Scavenge stores read-only tokens encrypted (AES-256-GCM,
   key from `SCAVENGE_SECRET` or `data/.vault-key`) and its connectors monitor through them, refreshing tokens as needed.

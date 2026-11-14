@@ -42,14 +42,14 @@
       const notes = [], closures = [], slow = [], news = [], cameras = [];
       const jams = (r.sections || []).filter(s => s.kind === 'jam' || s.kind === 'roadworks').map(s => ({ label: s.label || (s.kind === 'jam' ? 'Congestion' : 'Road works'), delay: s.delay || 0, speed: s.speed, magnitude: s.magnitude, at: line[Math.min(line.length - 1, s.from || 0)], km: (cum[Math.min(cum.length - 1, s.to || 0)] - cum[Math.min(cum.length - 1, s.from || 0)]) / 1000 }));
       for (const s of r.sections || []) if (s.kind === 'closure') closures.push({ label: s.label || 'Road closed', at: line[Math.min(line.length - 1, s.from || 0)], source: 'route' });
-      let extraDelay = 0;
+      let extraDelay = 0, slowDelay = 0;
       // incidents from the traffic feed that sit on this route
       for (const i of ctx.incidents || []) {
         const pts = i.line && i.line.length ? i.line : [[i.lon, i.lat]];
         const d = Math.min(...pts.map(p => near(line, p).d));
         if (d > tol) continue;
         if (BLOCKING[i.cat]) { if (!closures.some(c => dist(c.at, pts[0]) < 300)) closures.push({ label: BLOCKING[i.cat], detail: i.description, road: i.road, at: [i.lon, i.lat], source: 'traffic', cat: i.cat }); }
-        else if (SLOW[i.cat]) { slow.push({ label: SLOW[i.cat], detail: i.description, road: i.road, at: [i.lon, i.lat] }); if (!r.trafficIncluded) extraDelay += i.cat === 1 ? 420 : 180; }
+        else if (SLOW[i.cat]) { slow.push({ label: SLOW[i.cat], detail: i.description, road: i.road, at: [i.lon, i.lat] }); if (!r.trafficIncluded) { const d = i.cat === 1 ? 420 : 180; extraDelay += d; slowDelay += d; } }
         else if (i.cat === 6 && !r.trafficIncluded) { jams.push({ label: 'Congestion' + (i.road ? ' on ' + i.road : ''), delay: i.delay || 300, magnitude: i.magnitude, at: [i.lon, i.lat] }); extraDelay += i.delay || 300; }
       }
       // incidents reported in the news within 300 m of the route in the last few hours
@@ -82,7 +82,7 @@
       const blocked = closures.length > 0;
       const risk = news.length * 240 + slow.filter(s => r.trafficIncluded).length * 60;
       const score = time + risk + cameras.length * 8 + (blocked ? 1e6 : 0);
-      return Object.assign({}, r, { n, length, eta: Math.round(time), delay: Math.round(delay + extraDelay), blocked, closures, slow, news, cameras, jams,
+      return Object.assign({}, r, { n, length, eta: Math.round(time), delay: Math.round(delay + slowDelay), blocked, closures, slow, news, cameras, jams,
         limitAvg: covered ? Math.round(wsum / covered) : null, limitMax: max || null, limitCoverage: length ? covered / length : 0, score, notes });
     });
     const ranked = out.slice().sort((a, b) => a.score - b.score);
