@@ -66,7 +66,7 @@ mark { background: rgba(240,180,60,.22); color: var(--plasma); padding: 0 2px; }
 .chip button { border: 0; background: none; color: var(--dim); cursor: pointer; padding: 0 4px; font-size: 14px; line-height: 1; }
 .chip button:hover { color: var(--crit); }
 
-.deck { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 10px; }
+.deck { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
 .map { position: relative; height: var(--mapH); min-height: 260px; background: #0b0f11; border: 1px solid var(--line); overflow: hidden; cursor: grab; touch-action: none; }
 .map:active { cursor: grabbing; }
 .map svg { width: 100%; height: 100%; display: block; }
@@ -113,12 +113,18 @@ mark { background: rgba(240,180,60,.22); color: var(--plasma); padding: 0 2px; }
 .deck.fs { position: fixed; inset: 0; z-index: 90; background: var(--void); padding: calc(10px + env(safe-area-inset-top, 0px)) calc(10px + env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) calc(10px + env(safe-area-inset-left, 0px)); grid-template-rows: 100%; }
 .deck:fullscreen .map, .deck.fs .map, .deck:fullscreen .side, .deck.fs .side { height: 100%; }
 
-.side { height: var(--mapH); min-height: 260px; display: flex; flex-direction: column; background: linear-gradient(180deg, var(--hull-2), var(--hull)); border: 1px solid var(--line); min-width: 0; position: relative; }
+.side { height: auto; max-height: 460px; min-height: 0; display: flex; flex-direction: column; background: linear-gradient(180deg, var(--hull-2), var(--hull)); border: 1px solid var(--line); min-width: 0; position: relative; }
 .side::before { content: none; }
 .stabs { display: flex; border-bottom: 1px solid var(--line); flex: none; }
 .stabs button { flex: 1; border: 0; background: none; padding: 10px 6px; cursor: pointer; font: 600 11px/1 var(--f-display); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); border-bottom: 2px solid transparent; }
 .stabs button[aria-selected="true"] { color: var(--ion); border-bottom-color: var(--ion); }
 .spane { flex: 1; overflow: auto; padding: 12px 14px; min-height: 0; }
+.stabs { max-width: 640px; }
+/* full screen: only the map; a selected item opens a small card over it */
+.fscard { position: absolute; right: 12px; bottom: 12px; z-index: 4; width: min(360px, calc(100% - 24px)); max-height: min(60%, 520px); display: flex; flex-direction: column; background: rgba(3,8,16,.94); border: 1px solid var(--line-2); backdrop-filter: blur(6px); }
+.fscard[hidden] { display: none; }
+.fscard > .bar { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px 6px 12px; border-bottom: 1px solid var(--line); font: 600 10px var(--f-display); letter-spacing: .16em; text-transform: uppercase; color: var(--dim); }
+.fscard .spane { padding: 10px 12px; }
 .spane[hidden] { display: none; }
 
 .tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; margin-top: 8px; }
@@ -132,7 +138,6 @@ mark { background: rgba(240,180,60,.22); color: var(--plasma); padding: 0 2px; }
   .map { height: max(230px, 52vw); }
   .dock.pinned .map { height: max(190px, 44vw); }
   .dock.pinned .watch, .dock.pinned .clock, .dock.pinned .brand small { display: none; }
-  .side { height: auto; max-height: 520px; margin-top: 14px; }
   .legend { display: none; }
   .layers { width: 160px; }
   .toolbar { max-width: calc(100% - 180px); }
@@ -504,6 +509,7 @@ tr.on td { background: rgba(240,180,60,.12); }
         <div class="radarbar" id="radarBar" hidden><button class="tb" id="radarPlay" aria-label="Play radar loop">▶</button><input type="range" id="radarSlider" min="0" max="0" value="0" aria-label="Radar time"><span id="radarTime"></span></div>
         <div class="legend" id="legend"></div>
         <div class="tip" id="tip" hidden></div>
+        <div class="fscard" id="fsCard" hidden><div class="bar"><span>Selected</span><button class="btn sm" id="fsCardX" aria-label="Close">×</button></div></div>
       </div>
       <aside class="side" id="side">
         <div class="stabs" role="tablist">
@@ -527,6 +533,7 @@ tr.on td { background: rgba(240,180,60,.12); }
 </div>
 
 <main class="wrap">
+  <div id="sideSlot" style="margin-bottom:14px"></div>
   <section class="kpis" id="kpis" aria-label="Live telemetry"></section>
 
   <!-- OVERVIEW -->
@@ -786,7 +793,6 @@ node server/index.js        # → http://localhost:8080
 SCAVENGE_DEMO=1 node server/index.js   # offline simulator</div>
     </div>
   </section>
-  <div id="sideSlot" style="margin-top:14px"></div>
 </main>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 <div class="modal" id="authModal" hidden role="dialog" aria-modal="true" aria-labelledby="authTitle">
@@ -1534,7 +1540,14 @@ const MapView = window.MapView = (() => {
     setTimeout(() => c.remove(), 1500);
   }
   function center() { const t = d3.zoomTransform(svg.node()); const ll = proj.invert(t.invert([W / 2, H / 2])); return { lon: ll[0], lat: ll[1] }; }
-  function bbox() { const t = d3.zoomTransform(svg.node()); const a = proj.invert(t.invert([0, 0])), b = proj.invert(t.invert([W, H])); return { lomin: Math.max(-180, a[0]), lamax: Math.min(85, a[1]), lomax: Math.min(180, b[0]), lamin: Math.max(-85, b[1]) }; }
+  // visible area in degrees; when the view is wider than the world, longitudes must not wrap (that gave an empty box)
+  function bbox() {
+    const t = d3.zoomTransform(svg.node()), p0 = t.invert([0, 0]), p1 = t.invert([W, H]), xw = proj([-180, 0])[0], xe = proj([180, 0])[0];
+    const a = proj.invert(p0), b = proj.invert(p1);
+    let lomin = p0[0] <= xw ? -180 : a[0], lomax = p1[0] >= xe ? 180 : b[0];
+    if (!(lomax > lomin)) { lomin = -180; lomax = 180; }
+    return { lomin: Math.max(-180, lomin), lamax: Math.min(85, a[1]), lomax: Math.min(180, lomax), lamin: Math.max(-85, b[1]) };
+  }
   return { init, render, focus, panTo, ping, center, bbox, fit, drawRoute: () => drawRoute(), drawFlights, setBase, setRadar, drawTrafficTiles: () => drawTrafficTiles(d3.zoomTransform(svg.node())), drawRadar: () => drawRadar(d3.zoomTransform(svg.node())), zoomLevel: () => tz, onMove: f => (moveCb = f) };
 })();
 
@@ -1548,6 +1561,7 @@ function syncToolbar() {
   $('#dock').classList.toggle('pinned', S.pinned);
   $('#tbPin').setAttribute('aria-pressed', S.pinned); $('#tbPin').querySelector('.t').textContent = S.pinned ? 'Pinned' : 'Pin map';
   const fs = !!document.fullscreenElement || $('#deck').classList.contains('fs');
+  if (!fs && typeof fsCard === 'function') fsCard(false);
   $('#tbFull').setAttribute('aria-pressed', fs); $('#tbFull').querySelector('.t').textContent = fs ? 'Exit full screen' : 'Full screen';
 }
 $$('[data-base]').forEach(b => b.onclick = () => { const v = b.dataset.base; MapView.setBase(v === 'sat' ? (API.server ? 'hybrid' : 'rendered') : v === 'streets' ? 'streets' : 'vector'); });
@@ -1567,14 +1581,27 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#deck')
 $('#layersBtn').onclick = () => { const b = $('#layersBody'); b.hidden = !b.hidden; $('#layersBtn').setAttribute('aria-expanded', !b.hidden); $('#layersBtn span').textContent = b.hidden ? '▸' : '▾'; };
 // On narrow screens the side panel leaves the docked deck and sits at the top of the page content.
 const narrow = matchMedia('(max-width: 1080px)');
-function placeSide() { const side = $('#side'); if (narrow.matches) { $('#sideSlot').appendChild(side); } else $('#deck').appendChild(side); if (narrow.matches && !$('#layersBody').hidden && innerWidth < 700) $('#layersBtn').click(); }
+// The side panel (Inspect · Posts · Events · Route) sits under the map so the map spans the full width.
+function placeSide() { $('#sideSlot').appendChild($('#side')); if (narrow.matches && !$('#layersBody').hidden && innerWidth < 700) $('#layersBtn').click(); }
 narrow.addEventListener('change', placeSide);
 
 // ============================================================ side panel: inspect · posts · events
 function sideTab(t) { S.sideTab = t; $$('.stabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.p === t)); ['inspect', 'posts', 'events', 'route'].forEach(p => ($('#p-' + p).hidden = p !== t)); if (t === 'posts') renderSidePosts(); if (t === 'events') renderEvents(); if (t === 'route') Route.render(); }
 $('.stabs').onclick = e => { const b = e.target.closest('button'); if (b) sideTab(b.dataset.p); };
 window.select = s => select(s);
-function select(s) { S.sel = s; sideTab('inspect'); renderDetail(); MapView.render(); if (narrow.matches) { const side = $('#side'); side.style.scrollMarginTop = (S.pinned ? $('#dock').offsetHeight + 8 : 8) + 'px'; side.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }
+const isFull = () => !!document.fullscreenElement || $('#deck').classList.contains('fs');
+function fsCard(show) {
+  const card = $('#fsCard'), pane = $('#p-inspect');
+  if (show && isFull()) { if (pane.parentNode !== card) card.appendChild(pane); pane.hidden = false; card.hidden = false; }
+  else { card.hidden = true; if (pane.parentNode === card) $('#side').insertBefore(pane, $('#p-posts')); pane.hidden = S.sideTab !== 'inspect'; }
+}
+$('#fsCardX').onclick = () => fsCard(false);
+function select(s) {
+  S.sel = s; sideTab('inspect'); renderDetail(); MapView.render();
+  if (isFull()) return fsCard(true);
+  const side = $('#side'), r = side.getBoundingClientRect(), top = S.pinned ? $('#dock').getBoundingClientRect().bottom : 0;
+  if (r.top < top || r.top > innerHeight - 120) { side.style.scrollMarginTop = (S.pinned ? $('#dock').offsetHeight + 8 : 8) + 'px'; side.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+}
 function inspectPost(p, fromMap) { select({ kind: 'post', item: p }); if (!fromMap && p.lat != null) MapView.focus(p.lon, p.lat, 3.5); }
 const postIndex = new Map();
 function postRows(list) {
@@ -2402,7 +2429,7 @@ const ATC = (() => {
 })();
 
 // ============================================================ FLIGHTS
-const Flights = (() => {
+const Flights = window.Flights = (() => {
   const F = { list: [], byHex: new Map(), trails: new Map(), sel: null, selObj: null, follow: false, info: null, sort: 'alt', dir: -1,
     filter: { alt: 'all', emerg: false, mil: false }, labels: store.get('flLabels', false), routes: new Map(), apt: null, aptFor: null };
   let busy = false, timer = null;
@@ -2420,10 +2447,14 @@ const Flights = (() => {
     const alt = a.ground ? 0 : a.alt ?? -1;
     return f.alt === 'all' || (f.alt === 'ground' && a.ground) || (f.alt === 'low' && !a.ground && alt < 10000) || (f.alt === 'mid' && alt >= 10000 && alt < 30000) || (f.alt === 'high' && alt >= 30000);
   }
-  const visible = () => F.list.filter(pass);
+  // aircraft in the current view (with a margin) from the merged cache, so zooming never blanks the layer
+  const visible = () => { const b = MapView.bbox(), mx = (b.lomax - b.lomin) * 0.15 + 0.2, my = (b.lamax - b.lamin) * 0.15 + 0.2;
+    return F.list.filter(a => a.hex === F.sel || (a.lat >= b.lamin - my && a.lat <= b.lamax + my && a.lon >= b.lomin - mx && a.lon <= b.lomax + mx)).filter(pass); };
   let moved = true;
+  let again = false;
   async function fetchNow(force) {
-    if (!S.layers.flights || busy) return;
+    if (!S.layers.flights) return;
+    if (busy) { again = true; return; } // the map moved mid-fetch: fetch the new view right after
     if (!force && !moved && F.info && F.info.snapshot && Date.now() - (F.info._got || 0) < 60000) return; // world snapshot: no need to poll fast
     moved = false;
     busy = true;
@@ -2439,18 +2470,23 @@ const Flights = (() => {
         while (tr.length > 80) tr.shift(); F.trails.set(a.hex, tr);
       }
       for (const [h, tr] of F.trails) if (now - tr[tr.length - 1][2] > 15 * 60000) F.trails.delete(h);
-      F.list = res.aircraft; F.byHex = new Map(res.aircraft.map(a => [a.hex, a])); F.info = res; res._got = now;
+      // merge into the cache instead of replacing it: live reports stay ~2 min, world-snapshot ones until the next snapshot
+      for (const a of res.aircraft) { const p = F.byHex.get(a.hex); if (!p || !a._snap || p._snap) F.byHex.set(a.hex, a); }
+      for (const [h, a] of F.byHex) if (now - a._t > (a._snap ? 20 * 60000 : 150000) && h !== F.sel) F.byHex.delete(h);
+      if (!API.server) for (const [h, a] of F.byHex) if (a._t !== now && h !== F.sel) F.byHex.delete(h);
+      F.list = [...F.byHex.values()]; F.info = res; res._got = now;
       if (F.sel && F.byHex.has(F.sel)) { F.selObj = F.byHex.get(F.sel); if (F.follow) MapView.panTo(F.selObj.lon, F.selObj.lat); }
       else if (F.sel && F.selObj && !F.list.includes(F.selObj)) F.list.push(F.selObj); // keep the tracked aircraft even when it leaves the view
-    } catch (e) { F.info = { aircraft: F.list, error: e.message }; }
+    } catch (e) { F.info = Object.assign({}, F.info, { error: e.message }); }
     busy = false;
+    if (again) { again = false; setTimeout(() => fetchNow(true), 50); }
     hud(); MapView.drawFlights();
     if (S.view === 'flights') renderView();
     if (S.sel && S.sel.kind === 'flight' && S.sideTab === 'inspect') renderDetail();
   }
   function hud() {
     const i = F.info, el = $('#hudFl'); if (!el) return;
-    el.textContent = !S.layers.flights ? '' : !i ? '✈ LOADING FLIGHTS…' : i.tooWide ? '✈ ZOOM IN TO LOAD LIVE FLIGHTS' : i.snapshot ? `✈ ${visible().length} AIRCRAFT · WORLD SNAPSHOT ${ago(i.at || Date.now())} OLD · ZOOM IN FOR LIVE` : i.error ? '✈ FLIGHT DATA UNAVAILABLE' : `✈ ${visible().length} AIRCRAFT · ${(i.source || '').toUpperCase()}${i.partial ? ' · LOADING MORE' : ''}`;
+    el.textContent = !S.layers.flights ? '' : !i ? '✈ LOADING FLIGHTS…' : i.tooWide && !visible().length ? '✈ ZOOM IN TO LOAD LIVE FLIGHTS' : i.cached ? `✈ ${visible().length} AIRCRAFT · RECENT LIVE DATA · ZOOM IN FOR MORE` : i.snapshot ? `✈ ${visible().length} AIRCRAFT · WORLD SNAPSHOT ${ago(i.at || Date.now())} OLD · ZOOM IN FOR LIVE` : i.error ? '✈ FLIGHT DATA UNAVAILABLE' : `✈ ${visible().length} AIRCRAFT · ${(i.source || '').toUpperCase()}${i.partial ? ' · LOADING MORE' : ''}`;
   }
   function start() {
     clearInterval(timer);
@@ -2658,7 +2694,7 @@ const Traffic = window.Traffic = (() => {
     if (!force && Date.now() - last < 110000) return; last = Date.now();
     let r;
     if (API.traffic) {
-      if (tooFar()) { data = { incidents: [], jams: [], tooWide: true }; hud(); MapView.drawFlights(); return; }
+      if (tooFar()) { data = Object.assign({ incidents: [], jams: [] }, data, { tooWide: true }); hud(); MapView.drawFlights(); return; } // keep what was loaded
       try { r = await API.traffic(MapView.bbox()); } catch (e) { r = { incidents: [], jams: [], error: e.message }; }
       configured = r.configured !== false;
     } else { r = API.simInst.traffic(); configured = true; }
@@ -2674,7 +2710,7 @@ const Traffic = window.Traffic = (() => {
   }
   function hud() {
     const el = $('#hudTr'); if (!el) return;
-    el.textContent = !S.layers.traffic ? '' : API.traffic && configured === false ? '▲ TRAFFIC: ADD A FREE TOMTOM KEY IN ACCOUNTS' : data && data.tooWide ? '▲ ZOOM TO CITY LEVEL FOR TRAFFIC' : data ? `▲ TRAFFIC · ${(data.jams || []).filter(j => j.heavy).length} HEAVY · ${(data.incidents || []).filter(i => i.cat !== 6).length} INCIDENTS${data.simulated ? ' · SIM' : ''}` : '';
+    el.textContent = !S.layers.traffic ? '' : API.traffic && configured === false ? '▲ TRAFFIC: ADD A FREE TOMTOM KEY IN ACCOUNTS' : data && data.tooWide ? ((data.jams || []).length ? `▲ TRAFFIC · ${(data.jams || []).filter(j => j.heavy).length} HEAVY (LAST LOADED) · ZOOM IN TO UPDATE` : '▲ ZOOM TO CITY LEVEL FOR TRAFFIC') : data ? `▲ TRAFFIC · ${(data.jams || []).filter(j => j.heavy).length} HEAVY · ${(data.incidents || []).filter(i => i.cat !== 6).length} INCIDENTS${data.simulated ? ' · SIM' : ''}` : '';
   }
   setInterval(() => refresh(), 120000);
   MapView.onMoveExtra = () => refresh(true);
@@ -2747,7 +2783,11 @@ const Route = window.Route = (() => {
     busy = false; render(); MapView.drawRoute();
   }
   function pick(id) { sel = id; render(); MapView.drawRoute(); }
-  $('#tbRoute').onclick = () => { sideTab('route'); setTimeout(() => $('#rtFrom') && $('#rtFrom').focus(), 50); if (narrow.matches) $('#side').scrollIntoView({ behavior: 'smooth', block: 'start' }); };
+  $('#tbRoute').onclick = async () => {
+    if (isFull()) { $('#tbFull').click(); await new Promise(r => setTimeout(r, 250)); }
+    sideTab('route'); const side = $('#side'); side.style.scrollMarginTop = (S.pinned ? $('#dock').offsetHeight + 8 : 8) + 'px'; side.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    setTimeout(() => $('#rtFrom') && $('#rtFrom').focus({ preventScroll: true }), 400);
+  };
   return { render, run, pick, current: () => plan ? { plan, sel } : null };
 })();
 

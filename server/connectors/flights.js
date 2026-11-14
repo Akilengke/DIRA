@@ -64,7 +64,12 @@ async function inBox({ lamin, lomin, lamax, lomax }) {
       let list = all.list.filter(a => a.lat >= lamin && a.lat <= lamax && a.lon >= lomin && a.lon <= lomax);
       if (list.length > 3000) { const step = list.length / 3000; list = Array.from({ length: 3000 }, (_, i) => list[Math.floor(i * step)]); }
       return { aircraft: list, source: opensky.enabled() ? 'OpenSky Network' : 'OpenSky Network (snapshot)', snapshot: !opensky.enabled(), partial: false, tooWide: false, at: all.at, total: all.list.length };
-    } catch (e) { return { aircraft: [], tooWide: true, source: null, partial: false, note: 'World view unavailable: ' + e.message }; }
+    } catch (e) {
+      // world snapshot unavailable: fall back to every live tile already cached that falls in the view
+      const seen = new Map();
+      for (const t of tiles.values()) if (Date.now() - t.at < 10 * 60000) for (const a of t.list) if (a.lat >= lamin && a.lat <= lamax && a.lon >= lomin && a.lon <= lomax) seen.set(a.hex, a);
+      return { aircraft: [...seen.values()], tooWide: !seen.size, cached: !!seen.size, source: seen.size ? 'recent live data' : null, partial: false, note: 'World view unavailable: ' + e.message };
+    }
   }
   const keys = rows.flatMap(la => cols.map(lo => `${la},${lo}`));
   keys.forEach(want);
