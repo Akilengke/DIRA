@@ -24,6 +24,9 @@
     { group: 'Amateur emergency nets', name: 'IARU emergency 21360 kHz', hz: 21360000, mode: 'usb', note: 'Emergency centre of activity (15 m).' },
     { group: 'Amateur emergency nets', name: '2 m calling 145.500', hz: 145500000, mode: 'fm', note: 'Region 1 FM simplex calling frequency.' },
     { group: 'Amateur emergency nets', name: '2 m calling 146.520', hz: 146520000, mode: 'fm', note: 'Americas FM simplex calling frequency.' },
+    { group: 'Aviation', name: 'Shannon VOLMET 5505 kHz', hz: 5505000, mode: 'usb', note: 'Continuous aviation weather broadcast for North Atlantic and European airports (HF).' },
+    { group: 'Aviation', name: 'Shannon VOLMET 8957 kHz', hz: 8957000, mode: 'usb', note: 'Aviation weather broadcast, daytime HF frequency.' },
+    { group: 'Aviation', name: 'Shannon VOLMET 13264 kHz', hz: 13264000, mode: 'usb', note: 'Aviation weather broadcast, long-range HF frequency.' },
     { group: 'Weather & time', name: 'NOAA Weather Radio 162.550', hz: 162550000, mode: 'fm', note: 'US weather alerts (also 162.400–162.525).' },
     { group: 'Weather & time', name: 'WWV time 10 MHz', hz: 10000000, mode: 'am', note: 'Time signal; handy reception check.' }
   ];
@@ -61,5 +64,28 @@
   const EU = ['France', 'Germany', 'Spain', 'Italy', 'Netherlands', 'Belgium', 'Austria', 'Sweden', 'Poland', 'Portugal', 'Ireland', 'Greece'];
   EU.forEach(c => (NUMBERS[c] = [['Emergency (EU)', '112']]));
 
-  return { CHANNELS, AMATEUR, PROTECTED, parseRanges, txCheck, fmtFreq, NUMBERS };
+  // Major airports (fallback when the full OurAirports database is not loaded). [ICAO, IATA, name, city, country, lat, lon]
+  const AIRPORTS = [
+    ['HKJK','NBO','Jomo Kenyatta Intl','Nairobi','Kenya',-1.3192,36.9278], ['HKNW','WIL','Wilson','Nairobi','Kenya',-1.3217,36.8148], ['HKMO','MBA','Moi Intl','Mombasa','Kenya',-4.0348,39.5942],
+    ['HKKI','KIS','Kisumu Intl','Kisumu','Kenya',-0.0861,34.7289], ['HKEL','EDL','Eldoret Intl','Eldoret','Kenya',0.4045,35.2389], ['HUEN','EBB','Entebbe Intl','Entebbe','Uganda',0.0424,32.4435],
+    ['HTDA','DAR','Julius Nyerere Intl','Dar es Salaam','Tanzania',-6.8781,39.2026], ['HTKJ','JRO','Kilimanjaro Intl','Kilimanjaro','Tanzania',-3.4294,37.0745], ['HRYR','KGL','Kigali Intl','Kigali','Rwanda',-1.9686,30.1395],
+    ['HAAB','ADD','Addis Ababa Bole Intl','Addis Ababa','Ethiopia',8.9779,38.7993], ['HCMM','MGQ','Aden Adde Intl','Mogadishu','Somalia',2.0144,45.3047], ['HSSK','KRT','Khartoum Intl','Khartoum','Sudan',15.5895,32.5532],
+    ['HECA','CAI','Cairo Intl','Cairo','Egypt',30.1219,31.4056], ['DNMM','LOS','Murtala Muhammed Intl','Lagos','Nigeria',6.5774,3.3212], ['DNAA','ABV','Nnamdi Azikiwe Intl','Abuja','Nigeria',9.0068,7.2632],
+    ['DGAA','ACC','Kotoka Intl','Accra','Ghana',5.6052,-0.1668], ['FAOR','JNB','O. R. Tambo Intl','Johannesburg','South Africa',-26.1392,28.246], ['FACT','CPT','Cape Town Intl','Cape Town','South Africa',-33.9649,18.6017],
+    ['FVRG','HRE','Robert Gabriel Mugabe Intl','Harare','Zimbabwe',-17.9318,31.0928], ['FLKK','LUN','Kenneth Kaunda Intl','Lusaka','Zambia',-15.3308,28.4526], ['GMMN','CMN','Mohammed V Intl','Casablanca','Morocco',33.3675,-7.5899],
+    ['OMDB','DXB','Dubai Intl','Dubai','United Arab Emirates',25.2528,55.3644], ['OTHH','DOH','Hamad Intl','Doha','Qatar',25.2731,51.6081], ['OERK','RUH','King Khalid Intl','Riyadh','Saudi Arabia',24.9576,46.6988],
+    ['LTFM','IST','Istanbul','Istanbul','Turkey',41.2753,28.7519], ['EGLL','LHR','Heathrow','London','United Kingdom',51.47,-0.4543], ['LFPG','CDG','Charles de Gaulle','Paris','France',49.0097,2.5479],
+    ['EDDF','FRA','Frankfurt','Frankfurt','Germany',50.0379,8.5622], ['EHAM','AMS','Schiphol','Amsterdam','Netherlands',52.3105,4.7683], ['LEMD','MAD','Adolfo Suárez Madrid–Barajas','Madrid','Spain',40.4983,-3.5676],
+    ['LIRF','FCO','Fiumicino','Rome','Italy',41.8003,12.2389], ['VIDP','DEL','Indira Gandhi Intl','Delhi','India',28.5562,77.1], ['VABB','BOM','Chhatrapati Shivaji Maharaj Intl','Mumbai','India',19.0896,72.8656],
+    ['VHHH','HKG','Hong Kong Intl','Hong Kong','China',22.308,113.9185], ['WSSS','SIN','Changi','Singapore','Singapore',1.3644,103.9915], ['ZBAA','PEK','Beijing Capital Intl','Beijing','China',40.0799,116.6031],
+    ['RJTT','HND','Haneda','Tokyo','Japan',35.5494,139.7798], ['YSSY','SYD','Kingsford Smith','Sydney','Australia',-33.9399,151.1753], ['KJFK','JFK','John F. Kennedy Intl','New York','United States',40.6413,-73.7781],
+    ['KATL','ATL','Hartsfield–Jackson','Atlanta','United States',33.6407,-84.4277], ['KLAX','LAX','Los Angeles Intl','Los Angeles','United States',33.9416,-118.4085], ['KORD','ORD',"O'Hare Intl",'Chicago','United States',41.9742,-87.9073],
+    ['CYYZ','YYZ','Toronto Pearson','Toronto','Canada',43.6777,-79.6248], ['MMMX','MEX','Benito Juárez Intl','Mexico City','Mexico',19.4361,-99.0719], ['SBGR','GRU','Guarulhos','São Paulo','Brazil',-23.4356,-46.4731],
+    ['SAEZ','EZE','Ministro Pistarini','Buenos Aires','Argentina',-34.8222,-58.5358]
+  ].map(([icao, iata, name, city, country, lat, lon]) => ({ icao, iata, name, city, country, lat, lon }));
+  const SQUAWKS = { '7700': 'General emergency', '7600': 'Radio failure', '7500': 'Unlawful interference', '7000': 'VFR conspicuity (Europe)', '1200': 'VFR (Americas)', '2000': 'Entering controlled airspace without a code' };
+  const nm = (a, b, c, d) => { const r = Math.PI / 180, x = Math.sin((c - a) * r / 2) ** 2 + Math.cos(a * r) * Math.cos(c * r) * Math.sin((d - b) * r / 2) ** 2; return 2 * 3440.065 * Math.asin(Math.sqrt(x)); };
+  function nearestAirports(lat, lon, n, list) { return (list || AIRPORTS).map(a => Object.assign({}, a, { nm: Math.round(nm(lat, lon, a.lat, a.lon)) })).sort((a, b) => a.nm - b.nm).slice(0, n || 5); }
+
+  return { CHANNELS, AMATEUR, PROTECTED, parseRanges, txCheck, fmtFreq, NUMBERS, AIRPORTS, SQUAWKS, nearestAirports, nm };
 });

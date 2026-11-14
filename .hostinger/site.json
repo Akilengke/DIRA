@@ -1,0 +1,7 @@
+{
+  "domain": "scavenge.nakedtechnologies.tech",
+  "username": "u858513566",
+  "type": "nodejs",
+  "build": { "node_version": 24, "app_type": "other", "entry_file": "server/index.js", "build_script": "build" },
+  "source": "GitHub Akilengke/DIRA branch scavenge-deploy, scavenge-src/app.zip"
+}

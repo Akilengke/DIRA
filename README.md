@@ -29,6 +29,7 @@ server/
   engine/tx.js          ops intercom + licensed on-air transmit (rigctld PTT, band checks, logging)
   connectors/emergency.js  aircraft emergency squawks, GDACS, NWS
   connectors/radio.js   broadcast station directory, public KiwiSDR receivers
+  connectors/flights.js live ADS-B aircraft, flight lookup & routes, airports with ATC frequencies
 public/
   index.html            the whole UI (pinned map · Overview · Live feeds · Alerts · Radio & SOS · Analytics · Live TV · Sources)
   js/core.js            shared analysis engine: sentiment, geo-tagging, trend velocity, rule matching, briefing
@@ -67,6 +68,22 @@ Respect each platform's terms of service and local privacy law when monitoring.
   and PIN. It is limited to your licensed bands, never transmits on aviation or beacon frequencies, always releases PTT, and every over is logged.
   Never send a false distress call. Listening to police and emergency-service radio is restricted in some countries.
 
+## Flights
+
+- **Live aircraft** on the map from community ADS-B networks (adsb.lol → airplanes.live → adsb.fi, all free), loaded
+  for the area in view and moved smoothly between reports. Optional OpenSky credentials add a whole-world view.
+- **Flights tab**: sortable list of aircraft in view, filters (altitude, emergencies, military), search by callsign,
+  registration or ICAO hex, and a tracking card with route, altitude, speed, heading and squawk. Follow keeps the map on the aircraft.
+- **Listen to ATC**: nearest airports with their published frequencies (OurAirports). One click tunes your local
+  RTL-SDR receiver to the tower/approach/ATIS frequency (AM airband); LiveATC links cover airports with volunteer feeds.
+
+## Map styles
+
+The map uses Web Mercator and can switch between the Scavenge vector map, OpenStreetMap streets, CARTO night streets,
+Esri satellite imagery (with or without labels), NASA's daily MODIS satellite mosaic, and a locally rendered Earth.
+Tiles stream from those providers to the viewer's browser with their attribution shown on the map; respect each
+provider's usage policy for heavy traffic.
+
 ## How the analysis works
 
 - **Sentiment**: lexicon scoring with negation handling, normalised to −1…+1 per post.
@@ -82,7 +99,8 @@ Respect each platform's terms of service and local privacy law when monitoring.
 `GET /api/health · /api/feed?platform=&country=&city=&q=&limit= · /api/trends?window=&country= · /api/analytics ·
 /api/brief?country= · /api/events?layers=quake,nature,news,weather · /api/rules · /api/alerts · /api/watch ·
 /api/sources · /api/satellite?date=YYYY-MM-DD · /api/stream (SSE) · /api/emergency · /api/radio/log ·
-/api/radio/stations?country=&q= · /api/radio/kiwi?lat=&lon=&hz= · /api/sdr/status · /api/sdr/audio · /api/intercom · /api/tx/status`
+/api/radio/stations?country=&q= · /api/radio/kiwi?lat=&lon=&hz= · /api/sdr/status · /api/sdr/audio · /api/intercom · /api/tx/status ·
+/api/flights?lamin=&lomin=&lamax=&lomax= · /api/flights/find?q= · /api/flights/route?callsign= · /api/airports/near?lat=&lon=`
 `POST /api/rules {name, terms[], platforms[], country, mood, match, delivery{inapp,browser,sound,webhook,ntfy}} ·
 POST /api/watch {terms[]} · DELETE /api/rules?id= · POST /api/sdr/tune {freqs[], mode, squelch} ·
 POST /api/sdr/stop · POST /api/intercom (JSON text or raw audio) · POST /api/tx (raw audio; X-Freq, X-Operator-Pin)`

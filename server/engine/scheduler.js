@@ -76,7 +76,7 @@ async function pollEmergency(which) {
 function onTransmission(tx) {
   state.radioLog.unshift(tx); state.radioLog = state.radioLog.slice(0, 300);
   broadcast('radio', tx);
-  if (tx.text) ingest([{ id: 'radio_' + tx.id, platform: 'radio', author: tx.channel, channel: tx.channel, text: tx.text, ts: tx.ts, lat: tx.lat, lon: tx.lon, url: tx.clip, simulated: tx.simulated }]);
+  if (tx.text && !tx.aviation) ingest([{ id: 'radio_' + tx.id, platform: 'radio', author: tx.channel, channel: tx.channel, text: tx.text, ts: tx.ts, lat: tx.lat, lon: tx.lon, url: tx.clip, simulated: tx.simulated }]);
 }
 
 async function pollSocial() {
@@ -125,6 +125,9 @@ function startDemo() {
   state.incidents.feeds = s.incidents(); announce(state.incidents.feeds); publishIncidents();
   setInterval(() => onTransmission(s.transmission()), 20000);
   setTimeout(() => onTransmission(s.transmission()), 2000);
+  const nbo = require('../../public/js/radio').AIRPORTS[0];
+  setInterval(() => onTransmission(s.atc(nbo)), 30000);
+  setTimeout(() => onTransmission(s.atc(nbo)), 4000);
 }
 
 module.exports = { start, pollSocial, watchTerms, onTransmission };

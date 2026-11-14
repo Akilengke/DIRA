@@ -84,7 +84,7 @@ mark { background: rgba(255,169,77,.22); color: var(--plasma); padding: 0 2px; }
 .scan { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(90deg, transparent, rgba(78,227,255,.08) 48%, rgba(78,227,255,.25) 50%, transparent 52%); background-size: 40% 100%; background-repeat: no-repeat; animation: scan 9s linear infinite; mix-blend-mode: screen; }
 @keyframes scan { from { background-position: -40% 0; } to { background-position: 140% 0; } }
 .hud { position: absolute; pointer-events: none; font: 500 11px/1.4 var(--f-mono); color: var(--ion); text-shadow: 0 0 6px rgba(78,227,255,.6); }
-.hud.tl { top: 48px; left: 12px; } .hud.br { bottom: 10px; right: 12px; text-align: right; color: var(--dim); text-shadow: none; }
+.hud.tl { top: 48px; left: 12px; } .hud.br { bottom: 30px; right: 12px; text-align: right; color: var(--dim); text-shadow: none; }
 .toolbar { position: absolute; top: 8px; left: 8px; display: flex; flex-wrap: wrap; gap: 4px; z-index: 3; max-width: calc(100% - 200px); }
 .tb { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-2); background: rgba(3,8,16,.82); backdrop-filter: blur(6px); padding: 6px 10px; cursor: pointer; font: 600 11px/1 var(--f-display); letter-spacing: .12em; text-transform: uppercase; color: var(--fg); }
 .tb:hover { border-color: var(--ion); color: var(--ion); }
@@ -292,6 +292,26 @@ td.num { font-family: var(--f-mono); text-align: right; } th.num { text-align: r
 .st i { width: 8px; height: 8px; border-radius: 50%; }
 .code { font: 400 var(--s-1)/1.6 var(--f-mono); background: var(--void); border: 1px solid var(--line); padding: 10px 12px; overflow-x: auto; white-space: pre; color: var(--ion); }
 
+.tbseg { display: inline-flex; }
+.tbseg .tb + .tb { border-left: 0; }
+.attrib { position: absolute; right: 8px; bottom: 8px; z-index: 3; max-width: min(420px, 60%); font: 500 10px/1.4 var(--f-mono); color: #c9d6e6; background: rgba(3,8,16,.72); padding: 3px 7px; pointer-events: none; text-align: right; }
+.attrib:empty { display: none; }
+.attrib b { color: var(--plasma); font-weight: 500; }
+.hud.fl { top: 66px; left: 12px; color: #e8f1ff; }
+.map.tiles-on .country { fill: transparent; stroke: rgba(78,227,255,.28); }
+.map.tiles-on .grat { display: none; }
+.map.tiles-on .night { fill: rgba(0,3,10,.22); }
+.map .trail { fill: none; stroke: #ffa94d; stroke-width: 1.6; stroke-dasharray: 3 2; vector-effect: non-scaling-stroke; pointer-events: none; }
+.map .plane text { pointer-events: none; }
+.fltop { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: start; }
+@media (max-width: 1100px) { .fltop { grid-template-columns: minmax(0, 1fr); } }
+tr.on td { background: rgba(255,169,77,.12); }
+.apt { padding: 9px 0; border-bottom: 1px solid var(--line); display: grid; gap: 2px; }
+.apt b { font-family: var(--f-display); letter-spacing: .06em; color: var(--ion); }
+.apt .m { font: 400 11px var(--f-mono); color: var(--dim); }
+.fq { border: 1px solid var(--line-2); background: var(--void); padding: 4px 8px; cursor: pointer; font: 500 11px var(--f-mono); color: var(--fg); }
+.fq b { color: var(--plasma); font-weight: 600; margin-right: 4px; }
+.fq:hover { border-color: var(--ion); }
 /* sos ticker */
 .sos { display: flex; align-items: center; gap: 12px; margin-top: 6px; padding: 7px 12px; border: 1px solid var(--crit); background: linear-gradient(90deg, rgba(255,79,109,.22), rgba(255,79,109,.05)); font-size: var(--s-2); animation: sosglow 1.6s ease-in-out infinite; min-width: 0; }
 .sos[hidden] { display: none; }
@@ -366,6 +386,7 @@ td.num { font-family: var(--f-mono); text-align: right; } th.num { text-align: r
 .toast p { margin: 4px 0 0; overflow-wrap: anywhere; }
 .boot { position: fixed; inset: 0; z-index: 99; display: grid; place-items: center; background: var(--void); font: 500 var(--s-2) var(--f-mono); color: var(--ion); letter-spacing: .2em; text-transform: uppercase; transition: opacity .5s; }
 .boot.done { opacity: 0; pointer-events: none; }
+@media (max-width: 700px) { .hud.tl { top: 84px; } .hud.fl { top: 100px; } .attrib { max-width: 80%; } }
 @media (max-width: 700px) { .toast { padding: 7px 10px; font-size: 12px; } .toast p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } .sos { font-size: 12px; padding: 5px 8px; gap: 8px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } .scan { display: none; } }
 </style>
@@ -398,13 +419,19 @@ td.num { font-family: var(--f-mono); text-align: right; } th.num { text-align: r
       <div class="map" id="map">
         <div class="scan"></div>
         <div class="toolbar">
-          <button class="tb" id="tbSat" aria-pressed="false" title="Toggle satellite view"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2 2 2 10 0 12M8 2c-2 2-2 10 0 12"/></svg><span class="t">Satellite</span></button>
+          <span class="tbseg" role="group" aria-label="Map style">
+            <button class="tb" data-base="vector" aria-pressed="true" title="Scavenge vector map"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M1 4l4-2 6 2 4-2v10l-4 2-6-2-4 2z"/><path d="M5 2v10M11 4v10"/></svg><span class="t">Map</span></button>
+            <button class="tb" data-base="streets" aria-pressed="false" title="Street map"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 14L6 2M14 14L10 2M8 3v2M8 7v2M8 11v2"/></svg><span class="t">Streets</span></button>
+            <button class="tb" data-base="sat" aria-pressed="false" title="Satellite imagery"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><circle cx="8" cy="8" r="6"/><path d="M2 8h12M8 2c2 2 2 10 0 12M8 2c-2 2-2 10 0 12"/></svg><span class="t">Satellite</span></button>
+          </span>
           <button class="tb" id="tbFull" aria-pressed="false" title="Full screen"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg><span class="t">Full screen</span></button>
           <button class="tb" id="tbSize" title="Change map height"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 1v14M5 4l3-3 3 3M5 12l3 3 3-3"/></svg><span class="t" id="tbSizeT">Size M</span></button>
           <button class="tb" id="tbPin" aria-pressed="true" title="Keep the map docked at the top while you scroll"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M6 2h4l-1 5 3 2H4l3-2zM8 9v6"/></svg><span class="t">Pinned</span></button>
         </div>
         <div class="hud tl" id="hudTL">ORBITAL VIEW · EQUIRECTANGULAR</div>
         <div class="hud br" id="hudBR">LAT —  LON —</div>
+        <div class="hud fl" id="hudFl"></div>
+        <div class="attrib" id="attrib"></div>
         <div class="layers" id="layers"><button class="label" id="layersBtn" aria-expanded="true">Layers <span>▾</span></button><div class="body" id="layersBody"></div></div>
         <div class="zoomctl"><button class="tb" id="zin" aria-label="Zoom in">+</button><button class="tb" id="zout" aria-label="Zoom out">−</button><button class="tb" id="zreset" aria-label="Reset view">⌖</button></div>
         <div class="legend" id="legend"></div>
@@ -423,7 +450,7 @@ td.num { font-family: var(--f-mono); text-align: right; } th.num { text-align: r
     </section>
 
     <nav class="tabs" id="tabs" aria-label="Sections">
-      <a href="#overview">Overview</a><a href="#feeds">Live feeds</a><a href="#alerts">Alerts<span class="badge" id="alertBadge" hidden>0</span></a><a href="#radio">Radio &amp; SOS<span class="badge" id="sosBadge" hidden>0</span></a><a href="#analytics">Analytics</a><a href="#tv">Live TV</a><a href="#sources">Sources</a>
+      <a href="#overview">Overview</a><a href="#feeds">Live feeds</a><a href="#alerts">Alerts<span class="badge" id="alertBadge" hidden>0</span></a><a href="#radio">Radio &amp; SOS<span class="badge" id="sosBadge" hidden>0</span></a><a href="#flights">Flights</a><a href="#analytics">Analytics</a><a href="#tv">Live TV</a><a href="#sources">Sources</a>
     </nav>
     <div class="sos" id="sos" hidden role="alert"><b>⚠ <span id="sosLabel" style="overflow:visible">SOS</span></b><span id="sosText"></span><button class="btn sm" id="sosView">Locate</button><button class="btn sm" id="sosHide" aria-label="Dismiss">×</button></div>
   </div>
@@ -615,6 +642,34 @@ td.num { font-family: var(--f-mono); text-align: right; } th.num { text-align: r
     </div>
   </section>
 
+  <!-- FLIGHTS -->
+  <section class="view grid" id="v-flights" hidden>
+    <div class="grid fltop">
+      <div class="panel"><header><h2>Aircraft in view</h2><span class="label" id="flStat"></span></header>
+        <form class="row" id="flFind" style="align-items:flex-end">
+          <div class="field" style="flex:1 1 180px"><label class="label" for="flQ">Find a flight</label><input id="flQ" placeholder="Callsign, registration or ICAO hex, e.g. KQA100, 5Y-KZA"></div>
+          <button class="btn primary" type="submit">Find</button>
+        </form>
+        <p class="note" id="flFindNote" style="margin:6px 0 0"></p>
+        <div class="row" style="margin:10px 0">
+          <select id="flAlt" aria-label="Altitude" style="background:var(--void);border:1px solid var(--line-2);padding:6px 8px;font:400 12px var(--f-mono)"><option value="all">All altitudes</option><option value="ground">On the ground</option><option value="low">Below 10,000 ft</option><option value="mid">10,000–30,000 ft</option><option value="high">Above 30,000 ft</option></select>
+          <label class="checks"><input type="checkbox" id="flEm"> Emergencies only</label><label class="checks"><input type="checkbox" id="flMil"> Military only</label><label class="checks"><input type="checkbox" id="flLbl"> Callsigns on map</label>
+        </div>
+        <div class="tbl-wrap" style="max-height:520px;overflow:auto"><table><thead id="flHead"><tr><th data-s="flight" data-l="Callsign">Callsign</th><th data-s="type" data-l="Type">Type</th><th>Reg / hex</th><th class="num" data-s="alt" data-l="Altitude ft">Altitude ft</th><th class="num" data-s="gs" data-l="Speed kt">Speed kt</th><th class="num">Heading</th><th>Squawk</th></tr></thead><tbody id="flBody"></tbody></table></div>
+        <p class="note" id="flNote"></p>
+      </div>
+      <div class="grid">
+        <div class="panel detail" id="flSel"></div>
+        <div class="panel"><header><h2>Listen to air traffic control</h2><button class="btn sm" id="flAptHere">Airports near map centre</button></header>
+          <p class="note" style="margin-top:0">Airports <span id="flAptLabel"></span>. Press a frequency to tune your local receiver (AM airband), or open LiveATC's volunteer feeds.</p>
+          <p class="note" id="flListenNote" style="color:var(--plasma)"></p>
+          <div id="flApt"></div>
+        </div>
+        <div class="panel rxlog"><header><h2>ATC log</h2></header><div class="list" id="flAtc" style="max-height:300px"></div></div>
+      </div>
+    </div>
+  </section>
+
   <!-- SOURCES -->
   <section class="view grid" id="v-sources" hidden>
     <div class="panel"><header><h2>Data sources</h2></header><p class="note" id="srcNote" style="max-width:80ch;margin:0"></p></div>
@@ -680,8 +735,8 @@ const DEFAULT_TV = [
 const S = {
   mode: 'sim', posts: [], events: { quake: [], nature: [], news: [], weather: [] }, rules: [], alerts: store.get('alerts', []), watch: [],
   arrivals: [], spark: new Array(30).fill(0), seenAlerts: 0,
-  layers: Object.assign({ emergency: true, posts: true, heat: true, quake: true, nature: true, news: false, weather: true, night: true, tv: true, sat: false, clouds: true }, store.get('layers', {})),
-  satStyle: store.get('satStyle', null), lens: '', size: store.get('mapSize', 'M'), pinned: store.get('pinned', true),
+  layers: Object.assign({ flights: true, emergency: true, posts: true, heat: true, quake: true, nature: true, news: false, weather: true, night: true, tv: true, sat: false, clouds: true }, store.get('layers', {})),
+  base: store.get('base', null), lens: '', size: store.get('mapSize', 'M'), pinned: store.get('pinned', true),
   sel: null, sideTab: 'inspect', view: 'overview',
   feed: { plats: new Set(), mood: 'any', country: '', q: '', topic: '', paused: false },
   an: { country: '', win: 30, topic: '' }, logTopic: '',
@@ -732,6 +787,10 @@ const API = {
     this.transmit = (blob, hz, pin, operator) => fetch('api/tx', { method: 'POST', headers: { 'X-Freq': String(hz), 'X-Operator-Pin': pin, 'X-Operator': encodeURIComponent(operator || '') }, body: blob }).then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j; });
     this.intercomText = (from, channel, text) => send('api/intercom', 'POST', { from, channel, text });
     this.intercomVoice = (from, channel, blob, dur) => fetch('api/intercom', { method: 'POST', headers: { 'Content-Type': blob.type || 'audio/webm', 'X-From': encodeURIComponent(from), 'X-Channel': encodeURIComponent(channel), 'X-Duration': String(dur) }, body: blob }).then(async r => { const j = await r.json(); if (!r.ok) throw new Error(j.error || r.status); return j; });
+    this.flights = b => g('api/flights?' + new URLSearchParams(Object.fromEntries(Object.entries(b).map(([k, v]) => [k, v.toFixed(3)]))));
+    this.flightFind = q => g('api/flights/find?q=' + encodeURIComponent(q));
+    this.flightRoute = (cs, lat, lon) => g(`api/flights/route?callsign=${encodeURIComponent(cs)}&lat=${lat}&lon=${lon}`);
+    this.airports = (lat, lon) => g(`api/airports/near?lat=${lat}&lon=${lon}&n=6`);
     this.server = true;
     setMode(S.mode === 'live' ? 'Live uplink' : 'Server simulator', S.mode !== 'live');
   },
@@ -741,6 +800,9 @@ const API = {
     S.posts = sim.backfill(1200).map(C.enrich);
     S.events = sim.events();
     S.events.emergency = sim.incidents();
+    this.simInst = sim;
+    const atcLoop = () => { const c = MapView.center(); const apt = RAD.nearestAirports(c.lat, c.lon, 1)[0]; Radio.onTx(sim.atc(apt, sim.flights())); };
+    setTimeout(atcLoop, 1500); setTimeout(atcLoop, 2500); setInterval(atcLoop, 25000);
     S.radioLog = []; S.intercom = [
       { id: 'ic0', from: 'Field team Mombasa', channel: 'Field team', ts: Date.now() - 6 * 60000, text: 'Coast guard boat launched toward the fishing vessel. ETA 40 minutes.', simulated: true },
       { id: 'ic1', from: 'Ops desk', channel: 'Ops', ts: Date.now() - 11 * 60000, text: 'Monitoring VHF 16 and 2182 kHz. Kenya Red Cross notified about Tana River flooding.', simulated: true }];
@@ -875,7 +937,7 @@ function renderKPIs() {
 
 // ============================================================ satellite mosaic (rendered in-browser)
 const SatRender = (() => {
-  const W = 1440, H = 720;
+  const N = 1024; // square Mercator canvas matching the map's world square
   let terrain = null, clouds = null;
   const DESERT = new Set(['Egypt', 'Libya', 'Algeria', 'Mali', 'Niger', 'Chad', 'Sudan', 'Mauritania', 'W. Sahara', 'Western Sahara', 'Saudi Arabia', 'Iran', 'Iraq', 'Oman', 'Yemen', 'Jordan', 'Syria', 'United Arab Emirates', 'Qatar', 'Kuwait', 'Afghanistan', 'Turkmenistan', 'Uzbekistan', 'Namibia', 'Botswana', 'Somalia', 'Djibouti', 'Eritrea', 'Australia', 'Pakistan', 'Tunisia', 'Morocco', 'Israel']);
   const STEPPE = new Set(['Kazakhstan', 'Mongolia', 'Argentina', 'Turkey', 'Spain', 'Mexico', 'Kenya', 'Ethiopia', 'Tanzania', 'South Africa', 'Zimbabwe', 'Zambia', 'Angola', 'India', 'Nigeria', 'Senegal', 'Burkina Faso', 'S. Sudan', 'South Sudan']);
@@ -902,32 +964,31 @@ const SatRender = (() => {
   function fbm(x, y, oct, base, s) { let t = 0, amp = 0.5, p = base, norm = 0; for (let o = 0; o < oct; o++) { t += amp * vnoise(x * p, y * p, p, s + o); norm += amp; amp *= 0.5; p *= 2; } return t / norm; }
   function make(countries) {
     if (terrain) return { terrain, clouds };
-    const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
+    const cv = document.createElement('canvas'); cv.width = N; cv.height = N;
     const ctx = cv.getContext('2d');
-    const pr = d3.geoEquirectangular().scale(W / (2 * Math.PI)).translate([W / 2, H / 2]);
+    const pr = d3.geoMercator().scale(N / (2 * Math.PI)).translate([N / 2, N / 2]);
     const path = d3.geoPath(pr, ctx);
-    ctx.fillStyle = 'rgb(9,36,66)'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = 'rgb(9,36,66)'; ctx.fillRect(0, 0, N, N);
     countries.forEach(f => { const [r, g, b] = biome(f); ctx.fillStyle = `rgb(${r},${g},${b})`; ctx.beginPath(); path(f); ctx.fill(); });
-    const img = ctx.getImageData(0, 0, W, H), d = img.data;
-    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-      const k = (y * W + x) * 4, u = x / W, v = y / H;
-      const n = fbm(u, v * 0.5, 4, 24, 1);
+    const img = ctx.getImageData(0, 0, N, N), d = img.data;
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const k = (y * N + x) * 4, n = fbm(x / N, y / N, 4, 24, 1);
       const ocean = d[k + 2] > 60 && d[k] < 20;
       const m = ocean ? 0.78 + n * 0.45 : 0.62 + n * 0.75;
       d[k] = Math.min(255, d[k] * m); d[k + 1] = Math.min(255, d[k + 1] * m); d[k + 2] = Math.min(255, d[k + 2] * (ocean ? m * 1.05 : m));
     }
     ctx.putImageData(img, 0, 0);
-    // coastline glow
     ctx.strokeStyle = 'rgba(160,220,255,.18)'; ctx.lineWidth = 1.2; countries.forEach(f => { ctx.beginPath(); path(f); ctx.stroke(); });
     terrain = cv.toDataURL('image/jpeg', 0.86);
-    const cc = document.createElement('canvas'); cc.width = W / 2; cc.height = H / 2;
-    const c2 = cc.getContext('2d'), ci = c2.createImageData(cc.width, cc.height), cd = ci.data;
-    for (let y = 0; y < cc.height; y++) {
-      const lat = 90 - y / cc.height * 180, band = 0.55 + 0.45 * Math.max(Math.exp(-((lat / 10) ** 2)), Math.exp(-(((Math.abs(lat) - 55) / 14) ** 2)));
-      for (let x = 0; x < cc.width; x++) {
-        const n = fbm(x / cc.width, y / cc.height * 0.5, 5, 10, 9);
+    const C2 = N / 2, cc = document.createElement('canvas'); cc.width = C2; cc.height = C2;
+    const c2 = cc.getContext('2d'), ci = c2.createImageData(C2, C2), cd = ci.data;
+    for (let y = 0; y < C2; y++) {
+      const lat = (2 * Math.atan(Math.exp(Math.PI * (1 - 2 * y / C2))) - Math.PI / 2) * 180 / Math.PI;
+      const band = 0.55 + 0.45 * Math.max(Math.exp(-((lat / 10) ** 2)), Math.exp(-(((Math.abs(lat) - 55) / 14) ** 2)));
+      for (let x = 0; x < C2; x++) {
+        const n = fbm(x / C2, y / C2, 5, 10, 9);
         const a = Math.max(0, Math.min(1, (n * band - 0.36) * 3.4));
-        const k = (y * cc.width + x) * 4; cd[k] = cd[k + 1] = cd[k + 2] = 245; cd[k + 3] = a * 215;
+        const k = (y * C2 + x) * 4; cd[k] = cd[k + 1] = cd[k + 2] = 245; cd[k + 3] = a * 215;
       }
     }
     c2.putImageData(ci, 0, 0); clouds = cc.toDataURL('image/png');
@@ -935,15 +996,27 @@ const SatRender = (() => {
   }
   return { make };
 })();
-const SAT_STYLES = () => API.server
-  ? [['true', 'NASA true colour (yesterday)'], ['viirs', 'NASA VIIRS true colour'], ['night', 'NASA night lights'], ['render', 'Rendered Earth']]
-  : [['render', 'Rendered Earth (test site)']];
+
+// Base maps. Tile maps stream from free public tile servers (attribution shown on the map); "rendered" is drawn locally.
+const yesterday = () => new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+const BASEMAPS = {
+  vector: { label: 'Scavenge (vector)', short: 'Map' },
+  streets: { label: 'Streets (OpenStreetMap)', short: 'Streets', tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'], max: 19, attrib: '© OpenStreetMap contributors' },
+  night: { label: 'Night streets (CARTO)', short: 'Streets', tiles: ['https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png'], max: 20, attrib: '© OpenStreetMap contributors © CARTO' },
+  hybrid: { label: 'Satellite + labels (Esri)', short: 'Satellite', tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', 'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}'], max: 19, attrib: 'Imagery & labels © Esri, Maxar, Earthstar Geographics' },
+  satellite: { label: 'Satellite (Esri)', short: 'Satellite', tiles: ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'], max: 19, attrib: 'Imagery © Esri, Maxar, Earthstar Geographics' },
+  nasa: { label: 'NASA daily satellite (MODIS)', short: 'Satellite', tiles: ['https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/{date}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg'], max: 9, attrib: 'NASA GIBS · MODIS Terra, ' + yesterday() },
+  rendered: { label: 'Rendered Earth (works offline)', short: 'Satellite', rendered: true, attrib: 'Rendered locally · not real imagery' }
+};
+const PLANE = 'M0 -5 L1 -1.5 L5 0.5 L5 1.4 L1 0.6 L0.8 3.6 L2 4.6 L2 5.2 L0 4.6 L-2 5.2 L-2 4.6 L-0.8 3.6 L-1 0.6 L-5 1.4 L-5 0.5 L-1 -1.5 Z';
+const altColor = a => a == null ? '#9aa8b8' : a <= 0 ? '#8a94a3' : d3.interpolateRgbBasis(['#3ff2a4', '#4ee3ff', '#7d9bff', '#d18cff'])(Math.min(1, a / 40000));
 
 // ============================================================ MAP
 const MapView = (() => {
-  const W = 1000, H = 500;
-  let svg, g, proj, path, zoom, k = 1, gEmg, countries = [], gCountries, gPosts, gQuake, gNature, gNews, gWx, gNight, gPing, gTV, img, gClouds, ready = false;
+  const W = 1000, WORLD = 1000; let H = 500;   // viewBox follows the container's shape; the Mercator world is a 1000×1000 square
+  let svg, g, gTiles, proj, path, zoom, k = 1, tz = 0, gEmg, gFl, gTrail, countries = [], gCountries, gPosts, gQuake, gNature, gNews, gWx, gNight, gPing, gTV, img, gClouds, ready = false, tileErrs = 0, moveCb = null, moveT = null;
   const tip = $('#tip');
+  const mk = () => Math.min(Math.sqrt(k), 4) / k; // marker scale: grows a little with zoom, then stays a fixed screen size
   function decode(geo) {
     const scale = geo.UTF8Scale || 1024;
     const dec = (c, off) => { const out = []; let px = off[0], py = off[1]; for (let i = 0; i < c.length; i += 2) { let x = c.charCodeAt(i) - 64, y = c.charCodeAt(i + 1) - 64; x = (x >> 1) ^ (-(x & 1)); y = (y >> 1) ^ (-(y & 1)); x += px; y += py; px = x; py = y; out.push([x / scale, y / scale]); } return out; };
@@ -957,20 +1030,30 @@ const MapView = (() => {
   }
   function rewind(gm) { if (gm.type === 'Polygon') gm.coordinates.forEach(r => r.reverse()); else gm.coordinates.forEach(p => p.forEach(r => r.reverse())); }
   const NAME_FIX = { 'United States of America': 'United States', 'Republic of Korea': 'Korea', 'S. Korea': 'Korea', 'Russian Federation': 'Russia', 'Democratic Republic of the Congo': 'Dem. Rep. Congo', 'United Republic of Tanzania': 'Tanzania', 'Türkiye': 'Turkey' };
+  const home = () => d3.zoomIdentity.translate(0, H / 2 - WORLD / 2 - 40); // centred a little north of the equator
+
+  function sizeView() {
+    const r = $('#map').getBoundingClientRect();
+    H = Math.max(200, Math.round(W * (r.height || 500) / (r.width || 1000)));
+    svg.attr('viewBox', `0 0 ${W} ${H}`);
+    zoom.scaleExtent([Math.max(1, H / WORLD), 1 << 16]).extent([[0, 0], [W, H]]);
+    drawTiles(d3.zoomTransform(svg.node()));
+  }
 
   function init() {
     const el = $('#map');
-    svg = d3.select(el).insert('svg', ':first-child').attr('viewBox', `0 0 ${W} ${H}`).attr('preserveAspectRatio', 'xMidYMid meet').attr('role', 'img').attr('aria-label', 'World map of live signals and events');
-    proj = d3.geoEquirectangular().scale(W / (2 * Math.PI)).translate([W / 2, H / 2]);
+    svg = d3.select(el).insert('svg', ':first-child').attr('preserveAspectRatio', 'xMidYMid slice').attr('role', 'img').attr('aria-label', 'World map of live signals, flights and events');
+    proj = d3.geoMercator().scale(WORLD / (2 * Math.PI)).translate([WORLD / 2, WORLD / 2]);
     path = d3.geoPath(proj);
+    gTiles = svg.append('g').attr('class', 'tiles');
     g = svg.append('g');
-    img = g.append('image').attr('x', 0).attr('y', 0).attr('width', W).attr('height', H).attr('preserveAspectRatio', 'none').style('display', 'none');
+    img = g.append('image').attr('x', 0).attr('y', 0).attr('width', WORLD).attr('height', WORLD).attr('preserveAspectRatio', 'none').style('display', 'none');
     g.append('path').datum(d3.geoGraticule10()).attr('class', 'grat').attr('d', path);
     gCountries = g.append('g');
     gClouds = g.append('g').style('display', 'none');
     gNight = g.append('path').attr('class', 'night');
     gWx = g.append('g').attr('class', 'wx'); gTV = g.append('g').attr('class', 'tvp');
-    gNews = g.append('g'); gNature = g.append('g'); gQuake = g.append('g'); gPosts = g.append('g'); gEmg = g.append('g'); gPing = g.append('g');
+    gNews = g.append('g'); gNature = g.append('g'); gQuake = g.append('g'); gPosts = g.append('g'); gTrail = g.append('path').attr('class', 'trail'); gFl = g.append('g').attr('class', 'fl'); gEmg = g.append('g'); gPing = g.append('g');
     try { if (window.__WORLD) countries = decode(window.__WORLD).features; } catch (e) { console.warn('map geometry', e); countries = []; }
     if (countries.length) {
       countries.forEach(f => { f.properties.key = NAME_FIX[f.properties.name] || f.properties.name; });
@@ -978,75 +1061,101 @@ const MapView = (() => {
         .on('mousemove', (e, d) => showTip(e, countryTip(d.properties.key))).on('mouseleave', hideTip)
         .on('click', (e, d) => select({ kind: 'country', key: d.properties.key }));
     } else $('#hudTL').textContent = 'MAP GEOMETRY OFFLINE · SIGNALS ONLY';
-    zoom = d3.zoom().scaleExtent([1, 14]).translateExtent([[0, 0], [W, H]]).on('zoom', e => { g.attr('transform', e.transform); const nk = e.transform.k; if (Math.abs(nk - k) > 0.05) { k = nk; render(); } });
+    zoom = d3.zoom().translateExtent([[0, 0], [WORLD, WORLD]]).on('zoom', e => {
+      g.attr('transform', e.transform); drawTiles(e.transform);
+      const nk = e.transform.k; if (Math.abs(nk - k) / k > 0.04) { k = nk; render(); drawFlights(); }
+      clearTimeout(moveT); moveT = setTimeout(() => moveCb && moveCb(), 700);
+    });
     svg.call(zoom);
-    svg.on('mousemove.hud', e => { const [mx, my] = d3.pointer(e, g.node()); const ll = proj.invert([mx, my]); if (ll) $('#hudBR').textContent = `LAT ${ll[1].toFixed(2)}  LON ${ll[0].toFixed(2)}  ZOOM ×${k.toFixed(1)}`; });
-    $('#zin').onclick = () => svg.transition().duration(300).call(zoom.scaleBy, 1.6);
-    $('#zout').onclick = () => svg.transition().duration(300).call(zoom.scaleBy, 1 / 1.6);
-    $('#zreset').onclick = () => svg.transition().duration(400).call(zoom.transform, d3.zoomIdentity);
+    sizeView(); svg.call(zoom.transform, home());
+    if (window.ResizeObserver) new ResizeObserver(() => sizeView()).observe(el);
+    svg.on('mousemove.hud', e => { const [mx, my] = d3.pointer(e, g.node()); const ll = proj.invert([mx, my]); if (ll) $('#hudBR').textContent = `LAT ${ll[1].toFixed(3)}  LON ${ll[0].toFixed(3)}  ZOOM ${tz}`; });
+    $('#zin').onclick = () => svg.transition().duration(300).call(zoom.scaleBy, 2);
+    $('#zout').onclick = () => svg.transition().duration(300).call(zoom.scaleBy, 0.5);
+    $('#zreset').onclick = () => svg.transition().duration(500).call(zoom.transform, home());
     ready = true;
-    renderLayersPanel(); renderLegend();
+    renderLayersPanel(); renderLegend(); applyBase();
   }
-  function focus(lon, lat, scale) { const [x, y] = proj([lon, lat]); const s = scale || 4; svg.transition().duration(700).call(zoom.transform, d3.zoomIdentity.translate(W / 2 - x * s, H / 2 - y * s).scale(s)); }
+  function focus(lon, lat, scale) { const [x, y] = proj([lon, lat]); const s = Math.max(scale || 4, k > (scale || 4) ? k : 0); svg.transition().duration(700).call(zoom.transform, d3.zoomIdentity.translate(W / 2 - x * s, H / 2 - y * s).scale(s)); }
+  function panTo(lon, lat) { const [x, y] = proj([lon, lat]); svg.transition().duration(600).call(zoom.translateTo, x, y); }
   function showTip(e, html) { const r = $('#map').getBoundingClientRect(); tip.innerHTML = html; tip.hidden = false; let x = e.clientX - r.left + 14, y = e.clientY - r.top + 14; if (x + 280 > r.width) x = e.clientX - r.left - 290; if (y + 120 > r.height) y = e.clientY - r.top - 110; tip.style.left = Math.max(4, x) + 'px'; tip.style.top = Math.max(4, y) + 'px'; }
   function hideTip() { tip.hidden = true; }
   function countryTip(name) { const ps = S.posts.filter(p => p.country === name && Date.now() - p.ts < 3600000 && inTopic(p, S.lens)); const avg = ps.length ? ps.reduce((a, p) => a + p.sentiment, 0) / ps.length : 0; return `<b>${esc(name)}</b><br><span class="mono">${ps.length} posts${S.lens ? ' · ' + esc(TOPICS[S.lens].label) : ''} · last hour · mood ${avg >= 0 ? '+' : ''}${avg.toFixed(2)}</span><br><span style="color:var(--dim)">Click to inspect</span>`; }
 
-  const LAYERS = [['emergency', 'Emergencies & SOS', '#ff3b3b'], ['posts', 'Social signals', '#4ee3ff'], ['heat', 'Activity heat', '#2b7fa0'], ['quake', 'Earthquakes (USGS)', '#ff4f6d'], ['nature', 'Natural events (NASA)', '#ff6a3d'],
+  const LAYERS = [['flights', 'Live flights (ADS-B)', '#e8f1ff'], ['emergency', 'Emergencies & SOS', '#ff3b3b'], ['posts', 'Social signals', '#4ee3ff'], ['heat', 'Activity heat', '#2b7fa0'], ['quake', 'Earthquakes (USGS)', '#ff4f6d'], ['nature', 'Natural events (NASA)', '#ff6a3d'],
     ['news', 'News hotspots (GDELT)', '#ffa94d'], ['weather', 'Weather (Open-Meteo)', '#3ff2a4'], ['tv', 'Live TV channels', '#ff4f6a'], ['night', 'Day / night', '#334']];
   function renderLayersPanel() {
-    const styles = SAT_STYLES();
-    if (!S.satStyle || !styles.some(s => s[0] === S.satStyle)) S.satStyle = styles[0][0];
-    $('#layersBody').innerHTML = LAYERS.map(([id, label, c]) => `<label><input type="checkbox" data-layer="${id}" ${S.layers[id] ? 'checked' : ''}><i style="background:${c}"></i>${label}</label>`).join('')
-      + `<div class="label sub">Satellite</div><label><input type="checkbox" data-layer="sat" ${S.layers.sat ? 'checked' : ''}><i style="background:#9be15d"></i>Satellite view</label>
-      <select id="satStyle" aria-label="Satellite imagery">${styles.map(([v, l]) => `<option value="${v}" ${v === S.satStyle ? 'selected' : ''}>${l}</option>`).join('')}</select>
+    $('#layersBody').innerHTML = `<div class="label sub" style="margin-top:0">Base map</div><select id="baseSel" aria-label="Base map">${Object.entries(BASEMAPS).map(([v, b]) => `<option value="${v}" ${v === S.base ? 'selected' : ''}>${esc(b.label)}</option>`).join('')}</select>
       <label><input type="checkbox" data-layer="clouds" ${S.layers.clouds ? 'checked' : ''}><i style="background:#eef"></i>Cloud cover (rendered)</label>
-      <div class="label sub">Topic lens</div><select id="lens" aria-label="Topic lens"><option value="">All topics</option>${Object.entries(TOPICS).map(([k, t]) => `<option value="${k}" ${S.lens === k ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}</select>`;
+      <div class="label sub">Layers</div>` + LAYERS.map(([id, label, c]) => `<label><input type="checkbox" data-layer="${id}" ${S.layers[id] ? 'checked' : ''}><i style="background:${c}"></i>${label}</label>`).join('')
+      + `<div class="label sub">Topic lens</div><select id="lens" aria-label="Topic lens"><option value="">All topics</option>${Object.entries(TOPICS).map(([k, t]) => `<option value="${k}" ${S.lens === k ? 'selected' : ''}>${esc(t.label)}</option>`).join('')}</select>`;
     $('#layersBody').onchange = e => {
-      if (e.target.id === 'satStyle') { S.satStyle = e.target.value; store.set('satStyle', S.satStyle); img.attr('href', null); }
-      else if (e.target.id === 'lens') { S.lens = e.target.value; renderSidePosts(); }
-      else { S.layers[e.target.dataset.layer] = e.target.checked; store.set('layers', S.layers); }
-      syncToolbar(); render(); renderEvents();
+      if (e.target.id === 'baseSel') return setBase(e.target.value);
+      if (e.target.id === 'lens') { S.lens = e.target.value; renderSidePosts(); }
+      else { S.layers[e.target.dataset.layer] = e.target.checked; store.set('layers', S.layers); if (e.target.dataset.layer === 'flights') Flights.refresh(); }
+      syncToolbar(); render(); drawFlights(); renderEvents();
     };
   }
+  function setBase(b) { S.base = BASEMAPS[b] ? b : 'vector'; store.set('base', S.base); tileErrs = 0; const sel = $('#baseSel'); if (sel) sel.value = S.base; applyBase(); syncToolbar(); render(); }
   function renderLegend() { $('#legend').innerHTML = Object.values(PLAT).map(p => `<span><i style="background:${p.color}"></i>${p.label}</span>`).join(''); }
   function subsolar() { const now = new Date(), start = Date.UTC(now.getUTCFullYear(), 0, 0); const day = (now - start) / 86400000; const decl = -23.44 * Math.cos(2 * Math.PI / 365 * (day + 10)); const hrs = now.getUTCHours() + now.getUTCMinutes() / 60; return [(12 - hrs) * 15, decl]; }
 
+  // ---- base map: tiles drawn in screen space beneath the transformed vector layers
+  const tileUrl = (tpl, z, x, y) => tpl.replace('{z}', z).replace('{x}', x).replace('{y}', y).replace('{s}', 'abcd'[(x + y) % 4]).replace('{date}', yesterday());
+  function drawTiles(t) {
+    if (!gTiles) return;
+    const b = BASEMAPS[S.base] || BASEMAPS.vector;
+    const r = svg.node().getBoundingClientRect(), ppu = Math.max(r.width / W, r.height / H) || 1;
+    tz = Math.max(0, Math.min(b.max || 19, Math.round(Math.log2(WORLD * t.k * ppu * Math.min(window.devicePixelRatio || 1, 2) / 256))));
+    if (!b.tiles) { gTiles.selectAll('*').remove(); return; }
+    const n = 2 ** tz, ts = WORLD * t.k / n;
+    const i0 = Math.floor(-t.x / ts), i1 = Math.floor((W - t.x) / ts), j0 = Math.max(0, Math.floor(-t.y / ts)), j1 = Math.min(n - 1, Math.floor((H - t.y) / ts));
+    const ok = (i1 - i0 + 1) * (j1 - j0 + 1) <= 200;
+    gTiles.selectAll('g').data(b.tiles).join('g').each(function (tpl) {
+      const list = [];
+      if (ok) for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) { const x = ((i % n) + n) % n; list.push({ key: `${tz}/${i}/${j}`, href: tileUrl(tpl, tz, x, j), i, j }); }
+      d3.select(this).selectAll('image').data(list, d => d.key).join(en => en.append('image').attr('preserveAspectRatio', 'none').on('error', tileError).attr('href', d => d.href))
+        .attr('x', d => t.x + d.i * ts).attr('y', d => t.y + d.j * ts).attr('width', ts + 0.6).attr('height', ts + 0.6);
+    });
+  }
+  function tileError() {
+    tileErrs++;
+    if (tileErrs === 4) $('#attrib').innerHTML = API.server ? 'Map tiles are not loading. Check the connection, or pick another base map in Layers.'
+      : '<b>Street and satellite tiles can’t load inside this hosted test page.</b> They work on the live site; here, Satellite shows a rendered Earth.';
+  }
   let rendering = false;
-  function applySat() {
-    const on = S.layers.sat;
-    $('#map').classList.toggle('sat-on', on);
-    if (!on) { img.style('display', 'none'); gClouds.style('display', 'none'); return; }
+  function applyBase() {
+    if (!ready) return;
+    const b = BASEMAPS[S.base] || BASEMAPS.vector;
+    $('#map').classList.toggle('tiles-on', !!b.tiles); $('#map').classList.toggle('sat-on', !!b.rendered);
+    $('#attrib').textContent = b.attrib || '';
+    $('#hudTL').textContent = (b.tiles ? b.label.toUpperCase() : b.rendered ? 'RENDERED EARTH · NOT REAL IMAGERY' : 'ORBITAL VIEW · MERCATOR');
+    drawTiles(d3.zoomTransform(svg.node()));
+    if (!b.rendered) { img.style('display', 'none'); gClouds.style('display', 'none'); return; }
     img.style('display', null);
-    const useRender = S.satStyle === 'render' || !API.server;
-    if (useRender) {
-      if (!img.attr('href') && countries.length && !rendering) {
-        rendering = true; $('#hudTL').textContent = 'COMPOSITING ORBITAL MOSAIC…';
-        setTimeout(() => { const m = SatRender.make(countries); img.attr('href', m.terrain); gClouds.selectAll('image').data([0, 1]).join('image').attr('href', m.clouds).attr('x', d => d * W).attr('y', 0).attr('width', W).attr('height', H).attr('preserveAspectRatio', 'none').attr('opacity', 0.85); gClouds.attr('class', 'clouds'); rendering = false; $('#hudTL').textContent = 'RENDERED EARTH · SIMULATED IMAGERY'; }, 30);
-      }
-    } else {
-      const want = 'api/satellite?layer=' + S.satStyle;
-      if (img.attr('href') !== want) { img.attr('href', want); $('#hudTL').textContent = 'NASA GIBS · ' + (S.satStyle === 'night' ? 'BLACK MARBLE NIGHT LIGHTS' : 'DAILY TRUE-COLOUR MOSAIC'); }
-      if (!gClouds.selectAll('image').size() && countries.length) { const m = SatRender.make(countries); gClouds.selectAll('image').data([0, 1]).join('image').attr('href', m.clouds).attr('x', d => d * W).attr('width', W).attr('height', H).attr('preserveAspectRatio', 'none').attr('opacity', 0.8); gClouds.attr('class', 'clouds'); }
+    if (!img.attr('href') && countries.length && !rendering) {
+      rendering = true; $('#hudTL').textContent = 'COMPOSITING ORBITAL MOSAIC…';
+      setTimeout(() => { const m = SatRender.make(countries); img.attr('href', m.terrain); gClouds.selectAll('image').data([0, 1]).join('image').attr('href', m.clouds).attr('x', d => d * WORLD).attr('y', 0).attr('width', WORLD).attr('height', WORLD).attr('preserveAspectRatio', 'none').attr('opacity', 0.85); gClouds.attr('class', 'clouds'); rendering = false; $('#hudTL').textContent = 'RENDERED EARTH · NOT REAL IMAGERY'; gClouds.style('display', S.layers.clouds ? null : 'none'); }, 30);
     }
-    gClouds.style('display', S.layers.clouds && (useRender || S.satStyle !== 'night') ? null : 'none');
+    gClouds.style('display', S.layers.clouds ? null : 'none');
   }
 
   function render() {
     if (!ready) return;
-    const now = Date.now();
-    applySat();
+    const now = Date.now(), tiles = !!(BASEMAPS[S.base] || {}).tiles;
+    gClouds.style('display', (BASEMAPS[S.base] || {}).rendered && S.layers.clouds ? null : 'none');
     const lensed = S.lens ? S.posts.filter(p => inTopic(p, S.lens)) : S.posts;
     if (countries.length) {
       const counts = new Map();
       if (S.layers.heat) lensed.forEach(p => { if (p.country && now - p.ts < 3600000) counts.set(p.country, (counts.get(p.country) || 0) + 1); });
       const max = Math.max(1, ...counts.values());
       const col = d3.interpolateRgb('#0f1d2e', S.lens ? TOPICS[S.lens].color : '#1f9cc4');
-      gCountries.selectAll('path').attr('fill', d => { const c = counts.get(d.properties.key); return c ? col(Math.sqrt(c / max) * (S.lens ? 0.75 : 1)) : null; })
+      gCountries.selectAll('path').style('fill', d => { const c = counts.get(d.properties.key); return c ? col(Math.sqrt(c / max) * (S.lens ? 0.75 : 1)) : null; })
+        .style('fill-opacity', d => tiles && counts.get(d.properties.key) ? 0.4 : null)
         .classed('sel', d => S.sel && S.sel.kind === 'country' && S.sel.key === d.properties.key);
     }
     if (S.layers.night) { const [lon, lat] = subsolar(); gNight.attr('d', path(d3.geoCircle().center([lon + 180, -lat]).radius(90)())).style('display', null); } else gNight.style('display', 'none');
-    const r = v => v / Math.sqrt(k);
+    const s = mk(), r = v => v * s;
     const selId = S.sel && S.sel.kind === 'post' ? S.sel.item.id : null;
     const pts = S.layers.posts ? lensed.filter(p => p.lat != null).slice(-700) : [];
     gPosts.selectAll('circle').data(pts, d => d.id).join('circle').attr('class', 'pt')
@@ -1069,7 +1178,7 @@ const MapView = (() => {
       .on('mousemove', (e, d) => showTip(e, `<b>${esc(d.title)}</b><br><span class="mono">${esc((NAT[d.category] || [, d.category])[1])} · ${ago(d.ts)} ago</span>`)).on('mouseleave', hideTip)
       .on('click', (e, d) => select({ kind: 'event', item: d }));
     gNews.selectAll('rect').data(S.layers.news ? S.events.news : [], d => d.id).join('rect').attr('class', 'pt')
-      .each(function (d) { const s = r(2 + Math.sqrt(d.count || 1) * 0.7), [x, y] = proj([d.lon, d.lat]); d3.select(this).attr('x', x - s / 2).attr('y', y - s / 2).attr('width', s).attr('height', s); })
+      .each(function (d) { const sz = r(2 + Math.sqrt(d.count || 1) * 0.7), [x, y] = proj([d.lon, d.lat]); d3.select(this).attr('x', x - sz / 2).attr('y', y - sz / 2).attr('width', sz).attr('height', sz); })
       .attr('fill', 'rgba(255,169,77,.18)').attr('stroke', '#ffa94d').attr('stroke-width', r(0.5))
       .on('mousemove', (e, d) => showTip(e, `<b>${esc(d.title)}</b><br><span class="mono">${d.count || ''} reports · last 24h</span>`)).on('mouseleave', hideTip)
       .on('click', (e, d) => select({ kind: 'event', item: d }));
@@ -1080,45 +1189,62 @@ const MapView = (() => {
       .on('mousemove', (e, d) => showTip(e, `<b>${esc(d.city)}</b> · ${esc(WMO(d.code))}<br><span class="mono">${d.temp}°C · wind ${d.wind} km/h · rain ${d.precip} mm</span>`)).on('mouseleave', hideTip);
     wg.select('circle').attr('r', r(1)).attr('fill', d => tempColor(d.temp));
     wg.select('text').attr('x', r(2.2)).attr('y', r(2.4)).style('font-size', r(7) + 'px').style('stroke-width', r(2.2) + 'px').attr('fill', d => tempColor(d.temp)).text(d => Math.round(d.temp) + '°');
-    // emergencies: aircraft glyph (rotated to track), pulsing ring for distress calls, hexagon for disasters, triangle for weather warnings
     const emg = S.layers.emergency ? (S.events.emergency || []).filter(e => e.lat != null) : [];
-    const PLANE = 'M0 -5 L1 -1.5 L5 0.5 L5 1.4 L1 0.6 L0.8 3.6 L2 4.6 L2 5.2 L0 4.6 L-2 5.2 L-2 4.6 L-0.8 3.6 L-1 0.6 L-5 1.4 L-5 0.5 L-1 -1.5 Z';
     const HEX = 'M0 -4.2 L3.6 -2.1 L3.6 2.1 L0 4.2 L-3.6 2.1 L-3.6 -2.1 Z', TRI = 'M0 -4.4 L4 3 L-4 3 Z';
     const eg = gEmg.selectAll('g').data(emg, d => d.id).join(enter => { const e = enter.append('g').attr('class', 'pt'); e.append('circle').attr('class', 'quake-ring'); e.append('path'); return e; });
-    eg.attr('transform', d => `translate(${proj([d.lon, d.lat])}) scale(${1.1 / Math.sqrt(k)})`)
+    eg.attr('transform', d => `translate(${proj([d.lon, d.lat])}) scale(${1.1 * s})`)
       .on('mousemove', (e, d) => showTip(e, `<b style="color:${d.severity === 'critical' ? 'var(--crit)' : 'var(--plasma)'}">${esc(d.title)}</b><br><span class="mono">${esc(d.source || '')} · ${ago(d.ts)} ago</span>`)).on('mouseleave', hideTip)
       .on('click', (e, d) => { e.stopPropagation(); select({ kind: 'incident', item: d }); });
     eg.select('.quake-ring').attr('r', 4).attr('stroke-width', 0.8).style('stroke', d => d.severity === 'critical' ? '#ff3b3b' : '#ffa94d').style('display', d => d.severity === 'critical' ? null : 'none');
     eg.select('path').attr('d', d => d.kind === 'aircraft' ? PLANE : d.kind === 'disaster' ? HEX : d.kind === 'weather' ? TRI : 'M-1 -4 H1 V-1 H4 V1 H1 V4 H-1 V1 H-4 V-1 H-1 Z')
       .attr('transform', d => d.kind === 'aircraft' && d.track != null ? `rotate(${d.track})` : null)
       .attr('fill', d => d.kind === 'aircraft' ? '#fff' : d.severity === 'critical' ? '#ff3b3b' : '#ffa94d').attr('stroke', d => d.kind === 'aircraft' ? (d.severity === 'critical' ? '#ff3b3b' : '#ffa94d') : '#1a0308').attr('stroke-width', d => d.kind === 'aircraft' ? 1.1 : 0.6);
-    // live tv pins (channels in the same city fan out slightly)
     const seenCity = {};
     const tvs = S.layers.tv ? S.tv.list.map(ch => { const c = cityOf(ch.city); if (!c) return null; const n = seenCity[c.city] = (seenCity[c.city] || 0) + 1; return { ch, lon: c.lon + (n - 1) * 1.6, lat: c.lat - 1.8 }; }).filter(Boolean) : [];
     const tg = gTV.selectAll('g').data(tvs, d => d.ch.id).join(enter => { const e = enter.append('g').attr('class', 'pt'); e.append('rect'); e.append('path'); return e; });
-    tg.attr('transform', d => `translate(${proj([d.lon, d.lat])}) scale(${1 / Math.sqrt(k)})`)
+    tg.attr('transform', d => `translate(${proj([d.lon, d.lat])}) scale(${s})`)
       .on('mousemove', (e, d) => showTip(e, `<b>${esc(d.ch.name)}</b> · ${esc(d.ch.city)}<br><span style="color:var(--dim)">Live TV — click to watch</span>`)).on('mouseleave', hideTip)
       .on('click', (e, d) => { e.stopPropagation(); TV.play(d.ch.id); });
     tg.select('rect').attr('x', -4).attr('y', -3).attr('width', 8).attr('height', 6).attr('rx', 1).attr('fill', '#1a0610').attr('stroke', '#ff4f6a').attr('stroke-width', 0.7);
     tg.select('path').attr('d', 'M-1.2 -1.6 L2 0 L-1.2 1.6 Z').attr('fill', '#ff4f6a');
   }
+
+  // ---- flights (redrawn every second with dead reckoning between position reports)
+  function drawFlights() {
+    if (!ready) return;
+    const list = S.layers.flights ? Flights.visible() : [];
+    const s = mk() * 0.42, sel = Flights.selected(), labels = Flights.labels() || k >= 40;
+    const fg = gFl.selectAll('g').data(list, d => d.hex).join(enter => { const e = enter.append('g').attr('class', 'pt plane'); e.append('path').attr('d', PLANE); e.append('text'); return e; });
+    fg.attr('transform', d => { const p = Flights.pos(d); return `translate(${proj([p.lon, p.lat])}) scale(${d.hex === sel ? s * 1.4 : s})`; })
+      .on('mousemove', (e, d) => showTip(e, `<b>${esc(d.flight || d.hex)}</b>${d.type ? ' · ' + esc(d.type) : ''}${d.simulated ? ' <span class="tag sim">sim</span>' : ''}<br><span class="mono">${d.ground ? 'on ground' : (d.alt != null ? d.alt.toLocaleString() + ' ft' : '—')} · ${d.gs ?? '—'} kt · ${d.track != null ? Math.round(d.track) + '°' : ''}</span>${d.squawk && RAD.SQUAWKS[d.squawk] && /^7[567]/.test(d.squawk) ? `<br><b style="color:var(--crit)">Squawk ${esc(d.squawk)}: ${esc(RAD.SQUAWKS[d.squawk])}</b>` : ''}<br><span style="color:var(--dim)">Click to track</span>`)).on('mouseleave', hideTip)
+      .on('click', (e, d) => { e.stopPropagation(); Flights.select(d.hex); });
+    fg.select('path').attr('transform', d => `rotate(${d.track || 0})`)
+      .attr('fill', d => /^7[567]00$/.test(d.squawk || '') || d.emergency ? '#ff3b3b' : altColor(d.alt))
+      .attr('stroke', d => d.hex === sel ? '#ffa94d' : '#02060c').attr('stroke-width', d => d.hex === sel ? 1.4 : 0.6);
+    fg.select('text').attr('x', 8).attr('y', 3.5).style('font', '600 12px var(--f-mono)').attr('fill', d => d.hex === sel ? '#ffa94d' : '#e8f1ff').attr('stroke', '#02060c').attr('stroke-width', 2).style('paint-order', 'stroke')
+      .text(d => labels || d.hex === sel ? (d.flight || d.hex) : '');
+    const tr = sel && S.layers.flights ? Flights.trail(sel) : [];
+    gTrail.attr('d', tr.length > 1 ? 'M' + tr.map(p => proj(p).join(',')).join('L') : null);
+  }
+
   let pingBudget = 0;
   function ping(p) {
     if (!ready || !S.layers.posts || p.lat == null || document.hidden || !inTopic(p, S.lens)) return;
     const now = Date.now(); if (now - pingBudget < 250) return; pingBudget = now;
     const [x, y] = proj([p.lon, p.lat]);
-    const c = gPing.append('circle').attr('class', 'ping').attr('cx', x).attr('cy', y).attr('r', 1.6 / Math.sqrt(k)).attr('stroke', PLAT[p.platform]?.color || '#fff');
+    const c = gPing.append('circle').attr('class', 'ping').attr('cx', x).attr('cy', y).attr('r', 1.6 * mk()).attr('stroke', PLAT[p.platform]?.color || '#fff');
     setTimeout(() => c.remove(), 1500);
   }
   function center() { const t = d3.zoomTransform(svg.node()); const ll = proj.invert(t.invert([W / 2, H / 2])); return { lon: ll[0], lat: ll[1] }; }
-  return { init, render, focus, ping, center };
+  function bbox() { const t = d3.zoomTransform(svg.node()); const a = proj.invert(t.invert([0, 0])), b = proj.invert(t.invert([W, H])); return { lomin: Math.max(-180, a[0]), lamax: Math.min(85, a[1]), lomax: Math.min(180, b[0]), lamin: Math.max(-85, b[1]) }; }
+  return { init, render, focus, panTo, ping, center, bbox, drawFlights, setBase, zoomLevel: () => tz, onMove: f => (moveCb = f) };
 })();
 
 // ============================================================ map toolbar: satellite · fullscreen · size · pin
 const SIZES = { S: '34vh', M: '48vh', L: '66vh' };
 function syncToolbar() {
-  $('#tbSat').setAttribute('aria-pressed', S.layers.sat);
-  const satBox = document.querySelector('[data-layer="sat"]'); if (satBox) satBox.checked = S.layers.sat;
+  const short = (BASEMAPS[S.base] || BASEMAPS.vector).short;
+  $$('[data-base]').forEach(b => b.setAttribute('aria-pressed', { vector: 'Map', streets: 'Streets', sat: 'Satellite' }[b.dataset.base] === short));
   document.documentElement.style.setProperty('--mapH', SIZES[S.size]);
   $('#tbSizeT').textContent = 'Size ' + S.size;
   $('#dock').classList.toggle('pinned', S.pinned);
@@ -1126,7 +1252,7 @@ function syncToolbar() {
   const fs = !!document.fullscreenElement || $('#deck').classList.contains('fs');
   $('#tbFull').setAttribute('aria-pressed', fs); $('#tbFull').querySelector('.t').textContent = fs ? 'Exit full screen' : 'Full screen';
 }
-$('#tbSat').onclick = () => { S.layers.sat = !S.layers.sat; store.set('layers', S.layers); syncToolbar(); MapView.render(); };
+$$('[data-base]').forEach(b => b.onclick = () => { const v = b.dataset.base; MapView.setBase(v === 'sat' ? (API.server ? 'hybrid' : 'rendered') : v === 'streets' ? 'streets' : 'vector'); });
 $('#tbSize').onclick = () => { S.size = { S: 'M', M: 'L', L: 'S' }[S.size]; store.set('mapSize', S.size); syncToolbar(); };
 $('#tbPin').onclick = () => { S.pinned = !S.pinned; store.set('pinned', S.pinned); syncToolbar(); };
 $('#tbFull').onclick = async () => {
@@ -1147,6 +1273,7 @@ narrow.addEventListener('change', placeSide);
 // ============================================================ side panel: inspect · posts · events
 function sideTab(t) { S.sideTab = t; $$('.stabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.p === t)); ['inspect', 'posts', 'events'].forEach(p => ($('#p-' + p).hidden = p !== t)); if (t === 'posts') renderSidePosts(); if (t === 'events') renderEvents(); }
 $('.stabs').onclick = e => { const b = e.target.closest('button'); if (b) sideTab(b.dataset.p); };
+window.select = s => select(s);
 function select(s) { S.sel = s; sideTab('inspect'); renderDetail(); MapView.render(); if (narrow.matches) { const side = $('#side'); side.style.scrollMarginTop = (S.pinned ? $('#dock').offsetHeight + 8 : 8) + 'px'; side.scrollIntoView({ behavior: 'smooth', block: 'start' }); } }
 function inspectPost(p, fromMap) { select({ kind: 'post', item: p }); if (!fromMap && p.lat != null) MapView.focus(p.lon, p.lat, 3.5); }
 const postIndex = new Map();
@@ -1225,6 +1352,8 @@ function renderDetail() {
       <dt>Severity</dt><dd><span class="tag ${e.severity === 'info' ? 'neu' : 'neg'}">${esc(e.severity)}</span>${e.simulated ? ' <span class="tag sim">simulated</span>' : ''}</dd>
       ${e.url ? `<dt>Source</dt><dd><a href="${esc(e.url)}" target="_blank" rel="noopener">Open report ↗</a></dd>` : ''}</dl>
       <div class="label sub">Posts nearby</div>${postRows(S.posts.filter(p => p.lat != null && Math.abs(p.lat - e.lat) < 4 && Math.abs(p.lon - e.lon) < 4).slice(-10).reverse())}`;
+  } else if (s.kind === 'flight') {
+    Flights.detail(el, s.hex);
   } else if (s.kind === 'incident') {
     const e = s.item, col = e.severity === 'critical' ? 'var(--crit)' : e.severity === 'warning' ? 'var(--plasma)' : 'var(--ion)';
     const nums = RAD.NUMBERS[e.country];
@@ -1647,7 +1776,7 @@ const Radio = (() => {
       const gn = a.createGain(); gn.gain.value = 0.05 * +$('#rxVol').value;
       noise.connect(bp).connect(gn).connect(a.destination); noise.start();
     } catch {}
-    R.playing = `${tx.channel} (simulated)`; tune(tx.mode === 'fm' || tx.mode === 'am' ? Math.round(parseFloat(tx.freq) * 1e6) : Math.round(parseFloat(tx.freq) * 1e3), tx.mode, tx.channel);
+    R.playing = `${tx.channel}${tx.simulated && !/sim/.test(tx.channel) ? ' (simulated)' : ''}`; if (tx.freq != null) tune(typeof tx.freq === 'number' ? tx.freq : tx.mode === 'fm' || tx.mode === 'am' ? Math.round(parseFloat(tx.freq) * 1e6) : Math.round(parseFloat(tx.freq) * 1e3), tx.mode, tx.channel); else { R.chan = tx.channel; display(); }
     startMeter(() => 0.45 + Math.random() * 0.45);
     const done = () => { if (noise) { try { noise.stop(); } catch {} noise = null; } R.playing = null; stopMeter(); display(); };
     try {
@@ -1666,7 +1795,7 @@ const Radio = (() => {
     const list = (S.radioLog || []).filter(t => !R.distressOnly || (t.distress && t.distress.level !== 'securite'));
     $('#rxLogNote').textContent = API.server ? (R.sdr && R.sdr.available ? 'Each transmission your receiver hears is clipped, transcribed and checked for distress words.' : 'Transmissions heard by your receiver appear here.') + (API.server && S.mode !== 'live' ? ' Server simulator: traffic is synthetic.' : '')
       : 'Simulated radio traffic for the test site. Press Listen to hear it with a synthetic voice.';
-    $('#rxLog').innerHTML = list.slice(0, 80).map((t, i) => `<div class="item ${t.distress && t.distress.severity !== 'info' ? 'dis' : ''}"><div class="top">${t.distress ? `<span class="dtag ${t.distress.severity}">${esc(t.distress.label)}</span>` : ''}<b>${esc(t.channel)}</b><span>${esc(typeof t.freq === 'number' ? RAD.fmtFreq(t.freq) : t.freq + (+t.freq > 1000 ? ' kHz' : ' MHz'))} · ${esc((t.mode || '').toUpperCase())}</span><span>${t.duration}s</span><span>${ago(t.ts)} ago</span>${t.simulated ? '<span class="tag sim">sim</span>' : ''}</div>
+    $('#rxLog').innerHTML = list.slice(0, 80).map((t, i) => `<div class="item ${t.distress && t.distress.severity !== 'info' ? 'dis' : ''}"><div class="top">${t.distress ? `<span class="dtag ${t.distress.severity}">${esc(t.distress.label)}</span>` : ''}<b>${esc(t.channel)}</b><span>${esc(t.freq == null ? '' : typeof t.freq === 'number' ? RAD.fmtFreq(t.freq) : t.freq + (+t.freq > 1000 ? ' kHz' : ' MHz'))}${t.freq == null ? '' : ' · '}${esc((t.mode || '').toUpperCase())}</span><span>${t.duration}s</span><span>${ago(t.ts)} ago</span>${t.simulated ? '<span class="tag sim">sim</span>' : ''}</div>
       <p>${t.text ? esc(t.text) : '<span style="color:var(--dim)">No transcript. Play the clip to hear it.</span>'}</p>
       <div class="row">${t.clip ? `<audio controls preload="none" src="${esc(t.clip)}"></audio>` : `<button class="btn sm" data-sim="${i}">Listen</button>`}${t.lat != null ? `<button class="btn sm" data-loc="${i}">On map</button>` : ''}</div></div>`).join('') || '<p class="empty">Nothing received yet.</p>';
     $('#rxLog').onclick = e => { const b = e.target.closest('button'); if (!b) return; const t = list[+(b.dataset.sim ?? b.dataset.loc)]; if (b.dataset.sim != null) playSim(t); else MapView.focus(t.lon, t.lat, 5); };
@@ -1676,7 +1805,7 @@ const Radio = (() => {
   async function refreshSdr() { if (!API.sdrStatus) return; try { R.sdr = await API.sdrStatus(); } catch { R.sdr = null; } if (R.src === 'sdr') renderSource(); display(); }
   async function listen() {
     if (R.src !== 'sdr') { renderSource(); return; }
-    if (!API.server) { const t = (S.radioLog || []).find(x => Math.abs(parseFloat(x.freq) * (+x.freq > 1000 ? 1e3 : 1e6) - R.hz) < 5000) || (S.radioLog || [])[0]; if (t) playSim(t); return; }
+    if (!API.server) { const t = (S.radioLog || []).find(x => x.freq != null && Math.abs(parseFloat(x.freq) * (+x.freq > 1000 ? 1e3 : 1e6) - R.hz) < 5000) || (S.radioLog || []).find(x => !x.aviation) || (S.radioLog || [])[0]; if (t) playSim(t); return; }
     try { R.sdr = await API.tune({ freqs: [R.hz], mode: R.mode }); playStream('api/sdr/audio?t=' + Date.now(), 'Local receiver', () => R.sdrLevel || 0.05); }
     catch (e) { display(e.message); }
   }
@@ -1831,7 +1960,195 @@ const Radio = (() => {
     setInterval(() => { if (S.view === 'radio' && API.server) refreshSdr(); }, 15000);
     renderIncidents(); meter();
   }
-  return { init, show, onTx, onSdr, onIntercom, renderIncidents, listenNear };
+  // Used by the Flights tab: tune the local receiver (AM airband) and start listening. Returns a status line.
+  function listenTo(hz, mode, name) {
+    tune(hz, mode, name); R.src = 'sdr';
+    if (!API.server) { const t = (S.radioLog || []).find(x => x.aviation); if (t) playSim(t); return 'Test site: playing simulated air traffic. On your server this tunes your RTL-SDR receiver to ' + RAD.fmtFreq(hz) + ' AM.'; }
+    if (R.sdr && R.sdr.available === false) return 'No local receiver is connected to the server, so this frequency can’t be heard here. Use LiveATC for this airport instead.';
+    listen(); return `Tuning the local receiver to ${name}…`;
+  }
+  function playTx(t) { if (t.clip) { stopAll(); R.audioEl.src = t.clip; R.audioEl.volume = +$('#rxVol').value; R.audioEl.play().catch(() => {}); R.playing = t.channel; display(); } else playSim(t); }
+  return { init, show, onTx, onSdr, onIntercom, renderIncidents, listenNear, listenTo, playTx };
+})();
+
+// ============================================================ FLIGHTS
+const Flights = (() => {
+  const F = { list: [], byHex: new Map(), trails: new Map(), sel: null, selObj: null, follow: false, info: null, sort: 'alt', dir: -1,
+    filter: { alt: 'all', emerg: false, mil: false }, labels: store.get('flLabels', false), routes: new Map(), apt: null, aptFor: null };
+  let busy = false, timer = null;
+  const EMERG = /^7[567]00$/;
+  // Dead reckoning: move each aircraft along its track at its ground speed since the last report (max 60 s).
+  function pos(a) {
+    if (a.ground || !a.gs || a.track == null || !a._t) return a;
+    const dt = Math.min(60, (Date.now() - a._t) / 1000 + (a.seen || 0)), d = a.gs * dt / 3600 / 60, t = a.track * Math.PI / 180;
+    return { lat: a.lat + d * Math.cos(t), lon: a.lon + d * Math.sin(t) / Math.max(0.2, Math.cos(a.lat * Math.PI / 180)) };
+  }
+  function pass(a) {
+    const f = F.filter;
+    if (f.emerg && !(EMERG.test(a.squawk || '') || a.emergency)) return false;
+    if (f.mil && !a.mil) return false;
+    const alt = a.ground ? 0 : a.alt ?? -1;
+    return f.alt === 'all' || (f.alt === 'ground' && a.ground) || (f.alt === 'low' && !a.ground && alt < 10000) || (f.alt === 'mid' && alt >= 10000 && alt < 30000) || (f.alt === 'high' && alt >= 30000);
+  }
+  const visible = () => F.list.filter(pass);
+  async function fetchNow() {
+    if (!S.layers.flights || busy) return;
+    busy = true;
+    try {
+      let res;
+      if (API.flights) res = await API.flights(MapView.bbox());
+      else res = { aircraft: API.simInst.flights(), source: 'simulator' };
+      const now = Date.now();
+      for (const a of res.aircraft) {
+        a._t = now;
+        const tr = F.trails.get(a.hex) || []; const lp = tr[tr.length - 1];
+        if (!lp || lp[0] !== a.lon || lp[1] !== a.lat) tr.push([a.lon, a.lat, now]);
+        while (tr.length > 80) tr.shift(); F.trails.set(a.hex, tr);
+      }
+      for (const [h, tr] of F.trails) if (now - tr[tr.length - 1][2] > 15 * 60000) F.trails.delete(h);
+      F.list = res.aircraft; F.byHex = new Map(res.aircraft.map(a => [a.hex, a])); F.info = res;
+      if (F.sel && F.byHex.has(F.sel)) { F.selObj = F.byHex.get(F.sel); if (F.follow) MapView.panTo(F.selObj.lon, F.selObj.lat); }
+      else if (F.sel && F.selObj && !F.list.includes(F.selObj)) F.list.push(F.selObj); // keep the tracked aircraft even when it leaves the view
+    } catch (e) { F.info = { aircraft: F.list, error: e.message }; }
+    busy = false;
+    hud(); MapView.drawFlights();
+    if (S.view === 'flights') renderView();
+    if (S.sel && S.sel.kind === 'flight' && S.sideTab === 'inspect') renderDetail();
+  }
+  function hud() {
+    const i = F.info, el = $('#hudFl'); if (!el) return;
+    el.textContent = !S.layers.flights ? '' : !i ? '✈ LOADING FLIGHTS…' : i.tooWide ? '✈ ZOOM IN TO LOAD LIVE FLIGHTS' : i.error ? '✈ FLIGHT DATA UNAVAILABLE' : `✈ ${visible().length} AIRCRAFT · ${(i.source || '').toUpperCase()}${i.partial ? ' · LOADING MORE' : ''}`;
+  }
+  function start() {
+    clearInterval(timer);
+    timer = setInterval(fetchNow, API.server ? (S.mode === 'live' ? 8000 : 4000) : 2000);
+    setInterval(() => { if (S.layers.flights && !document.hidden) MapView.drawFlights(); }, 1000);
+    MapView.onMove(() => { if (API.server) fetchNow(); });
+    fetchNow();
+  }
+  function select(hex) {
+    F.sel = hex; F.selObj = F.byHex.get(hex) || F.selObj;
+    window.select({ kind: 'flight', hex }); MapView.drawFlights();
+    if (S.view === 'flights') renderView();
+  }
+
+  // ---- details card (side panel + Flights tab)
+  function card(a, compact) {
+    if (!a) return '<p class="empty">Click any aircraft on the map, or a row in the list, to track it.</p>';
+    const sq = a.squawk && RAD.SQUAWKS[a.squawk], danger = EMERG.test(a.squawk || '') || a.emergency;
+    const rt = F.routes.get(a.flight);
+    const vr = a.vr ? (a.vr > 150 ? ' ▲ ' : a.vr < -150 ? ' ▼ ' : ' ') + Math.abs(Math.round(a.vr)).toLocaleString() + ' ft/min' : '';
+    const routeHtml = a.from && a.to ? `${esc(a.from)} → ${esc(a.to)}` : rt === undefined ? '<span style="color:var(--dim)">Looking up…</span>' : rt ? `${esc((rt.airports || []).map(x => x && (x.iata || x.icao) + (x.city ? ' ' + x.city : '')).filter(Boolean).join(' → ') || rt.codes)}${rt.plausible === false ? ' <span style="color:var(--dim)">(unconfirmed)</span>' : ''}` : '<span style="color:var(--dim)">Unknown</span>';
+    if (a.flight && rt === undefined && !a.from) { F.routes.set(a.flight, undefined); route(a); }
+    return `<p class="big" style="margin:0 0 4px;font-size:1.6rem;color:${danger ? 'var(--crit)' : 'var(--ion)'}">${esc(a.flight || a.hex.toUpperCase())}${a.simulated ? ' <span class="tag sim" style="font-size:10px;vertical-align:middle">simulated</span>' : ''}</p>
+      <p class="mono" style="margin:0 0 10px;color:var(--dim);font-size:12px">${esc([a.type, a.desc, a.reg, a.hex && 'ICAO ' + a.hex.toUpperCase()].filter(Boolean).join(' · '))}</p>
+      ${danger ? `<div class="warnbox" style="border-color:var(--crit);margin-bottom:10px"><b style="color:var(--crit)">Squawk ${esc(a.squawk || '')}</b> ${esc(sq || a.emergency || 'Emergency')}</div>` : ''}
+      <dl><dt>Route</dt><dd>${routeHtml}</dd>
+      <dt>Altitude</dt><dd class="mono">${a.ground ? 'On ground' : a.alt != null ? a.alt.toLocaleString() + ' ft' : '—'}${vr}</dd>
+      <dt>Speed</dt><dd class="mono">${a.gs != null ? a.gs + ' kt' : '—'}</dd><dt>Heading</dt><dd class="mono">${a.track != null ? Math.round(a.track) + '°' : '—'}</dd>
+      <dt>Squawk</dt><dd class="mono">${esc(a.squawk || '—')}${sq && !danger ? ' · ' + esc(sq) : ''}</dd>
+      <dt>Position</dt><dd class="mono">${a.lat.toFixed(3)}, ${a.lon.toFixed(3)}</dd><dt>Source</dt><dd>${esc(a.source || (a.simulated ? 'simulator' : '—'))}${a.seen ? ` · ${Math.round(a.seen)}s old` : ''}</dd></dl>
+      <div class="row" style="margin-top:12px">
+        <button class="btn sm ${F.follow && F.sel === a.hex ? '' : 'primary'}" data-fl="follow">${F.follow && F.sel === a.hex ? 'Stop following' : 'Follow'}</button>
+        <button class="btn sm" data-fl="center">Centre</button><button class="btn sm" data-fl="listen">Listen to ATC</button>
+        ${a.simulated ? '' : `<a class="btn sm" href="https://globe.adsb.lol/?icao=${esc(a.hex)}" target="_blank" rel="noopener">adsb.lol ↗</a>${a.flight ? `<a class="btn sm" href="https://www.flightaware.com/live/flight/${encodeURIComponent(a.flight)}" target="_blank" rel="noopener">FlightAware ↗</a>` : ''}`}
+      </div>`;
+  }
+  async function route(a) {
+    if (!API.flightRoute) { F.routes.set(a.flight, null); return; }
+    try { F.routes.set(a.flight, await API.flightRoute(a.flight, a.lat, a.lon)); } catch { F.routes.set(a.flight, null); }
+    if (S.sel && S.sel.kind === 'flight') renderDetail(); if (S.view === 'flights') renderView();
+  }
+  function bindCard(root) {
+    root.querySelectorAll('[data-fl]').forEach(b => b.onclick = () => {
+      const a = F.selObj; if (!a) return;
+      if (b.dataset.fl === 'follow') { F.follow = !F.follow; if (F.follow) MapView.focus(a.lon, a.lat, 48); }
+      if (b.dataset.fl === 'center') MapView.focus(a.lon, a.lat, 48);
+      if (b.dataset.fl === 'listen') { F.aptFor = null; location.hash = 'flights'; loadAirports(a.lat, a.lon, `near ${a.flight || a.hex}`); }
+      if (S.sel && S.sel.kind === 'flight') renderDetail(); if (S.view === 'flights') renderView();
+    });
+  }
+
+  // ---- airports & ATC listening
+  async function loadAirports(lat, lon, label) {
+    const key = lat.toFixed(1) + ',' + lon.toFixed(1); if (F.aptFor === key) return; F.aptFor = key;
+    F.apt = { label, list: null };
+    renderAirports();
+    let list;
+    try { list = API.airports ? await API.airports(lat, lon) : RAD.nearestAirports(lat, lon, 5).map(a => Object.assign({ freqs: [] }, a)); }
+    catch (e) { list = RAD.nearestAirports(lat, lon, 5).map(a => Object.assign({ freqs: [] }, a)); }
+    F.apt = { label, list }; renderAirports();
+  }
+  function renderAirports() {
+    const el = $('#flApt'); if (!el) return;
+    if (!F.apt) { const c = MapView.center(); loadAirports(c.lat, c.lon, 'near the map centre'); return; }
+    $('#flAptLabel').textContent = F.apt.label;
+    if (!F.apt.list) { el.innerHTML = '<p class="empty">Finding airports…</p>'; return; }
+    const order = ['ATIS', 'TWR', 'APP', 'DEP', 'GND', 'CTAF', 'AFIS', 'UNIC'];
+    el.innerHTML = F.apt.list.map((a, ai) => {
+      const fq = (a.freqs || []).slice().sort((x, y) => (order.indexOf(x.type) + 99) % 99 - (order.indexOf(y.type) + 99) % 99).slice(0, 10);
+      return `<div class="apt"><div class="row" style="justify-content:space-between"><span><b>${esc(a.icao)}</b>${a.iata ? ' / ' + esc(a.iata) : ''} · ${esc(a.name)}</span><span class="m">${a.nm.toLocaleString()} nm</span></div>
+        <div class="m">${esc([a.city, a.country].filter(Boolean).join(', '))}</div>
+        <div class="row" style="margin-top:6px">${fq.map((f, fi) => `<button class="fq" data-a="${ai}" data-f="${fi}" title="${esc(f.desc || f.type)}"><b>${esc(f.type)}</b> ${f.mhz.toFixed(3)}</button>`).join('')}
+          ${!fq.length ? (API.server ? '<span class="m">No published frequencies</span>' : `<button class="fq" data-a="${ai}" data-sim="1"><b>ATC</b> simulated</button>`) : ''}
+          <a class="btn sm" href="https://www.liveatc.net/search/?icao=${encodeURIComponent(a.icao)}" target="_blank" rel="noopener">LiveATC ↗</a></div></div>`;
+    }).join('') || '<p class="empty">No airports found nearby.</p>';
+    el.onclick = e => {
+      const b = e.target.closest('.fq'); if (!b || !F.apt || !F.apt.list) return; const a = F.apt.list[+b.dataset.a];
+      if (b.dataset.sim) { const tx = API.simInst.atc(a); Radio.onTx(tx); Radio.playTx(tx); $('#flListenNote').textContent = `Playing a simulated call for ${a.icao}. Real ATC audio needs a local receiver or LiveATC.`; return; }
+      const f = (a.freqs || [])[+b.dataset.f];
+      $('#flListenNote').textContent = Radio.listenTo(Math.round(f.mhz * 1e6), 'am', `${a.icao} ${f.type} ${f.mhz.toFixed(3)}`);
+    };
+  }
+  function renderAtcLog() {
+    const list = (S.radioLog || []).filter(t => t.aviation || (typeof t.freq === 'number' && t.freq >= 108e6 && t.freq <= 137e6)).slice(0, 40);
+    $('#flAtc').innerHTML = list.map((t, i) => `<div class="item"><div class="top"><b>${esc(t.channel)}</b><span>${ago(t.ts)} ago</span>${t.simulated ? '<span class="tag sim">sim</span>' : ''}</div><p>${t.text ? esc(t.text) : '<span style="color:var(--dim)">No transcript</span>'}</p>
+      <div class="row">${t.clip ? `<audio controls preload="none" src="${esc(t.clip)}"></audio>` : `<button class="btn sm" data-i="${i}">Listen</button>`}</div></div>`).join('') || '<p class="empty">Air traffic heard by your receiver appears here.</p>';
+    $('#flAtc').onclick = e => { const b = e.target.closest('[data-i]'); if (b) Radio.playTx(list[+b.dataset.i]); };
+  }
+
+  // ---- Flights tab
+  let lastView = 0;
+  function renderView(force) {
+    if (!force && Date.now() - lastView < 1500) return; lastView = Date.now();
+    const i = F.info || {}, list = visible();
+    const key = { alt: a => a.ground ? 0 : a.alt ?? -1, gs: a => a.gs ?? -1, flight: a => a.flight || 'zzz', type: a => a.type || 'zzz' }[F.sort];
+    list.sort((a, b) => (key(a) > key(b) ? 1 : key(a) < key(b) ? -1 : 0) * F.dir);
+    $('#flStat').textContent = i.tooWide ? 'Zoomed out too far for live flights' : `${list.length.toLocaleString()} aircraft${i.source ? ' · ' + i.source : ''}${i.partial ? ' · loading more' : ''}`;
+    $('#flNote').innerHTML = i.tooWide ? `Live ADS-B networks answer for about 250 nautical miles at a time, so zoom the map in to a region to load flights. <button class="btn sm" id="flZoomHere">Zoom to the map centre</button>${API.server ? ' A free OpenSky account (OPENSKY_CLIENT_ID / SECRET) adds a whole-world view.' : ''}`
+      : i.error ? `<span class="error">Flight data unavailable: ${esc(i.error)}</span>` : API.server ? (S.mode === 'live' ? 'Live positions from community ADS-B receivers (adsb.lol, airplanes.live, adsb.fi), refreshed every 8 seconds; aircraft move smoothly between reports.' : 'Server simulator: aircraft are synthetic.') : 'Simulated air traffic for the test site. The live site shows real aircraft from community ADS-B networks.';
+    const z = $('#flZoomHere'); if (z) z.onclick = () => { const c = MapView.center(); MapView.focus(c.lon, c.lat, 24); };
+    $('#flBody').innerHTML = list.slice(0, 250).map(a => `<tr class="trow ${a.hex === F.sel ? 'on' : ''}" data-hex="${esc(a.hex)}"><td><b style="color:${EMERG.test(a.squawk || '') || a.emergency ? 'var(--crit)' : 'inherit'}">${esc(a.flight || '—')}</b></td><td>${esc(a.type || '—')}</td><td class="mono">${esc(a.reg || a.hex)}</td>
+      <td class="num" style="color:${altColor(a.alt)}">${a.ground ? 'GND' : a.alt != null ? a.alt.toLocaleString() : '—'}</td><td class="num">${a.gs ?? '—'}</td><td class="num">${a.track != null ? Math.round(a.track) + '°' : '—'}</td><td class="mono">${esc(a.squawk || '')}</td></tr>`).join('') || `<tr><td colspan="7" class="empty">${i.tooWide ? 'Zoom in on the map to load aircraft.' : 'No aircraft match these filters in view.'}</td></tr>`;
+    $$('#flHead th[data-s]').forEach(th => th.textContent = th.dataset.l + (F.sort === th.dataset.s ? (F.dir < 0 ? ' ▼' : ' ▲') : ''));
+    $('#flSel').innerHTML = `<header><h2>Tracked aircraft</h2></header>` + card(F.sel && (F.byHex.get(F.sel) || F.selObj)); bindCard($('#flSel'));
+    renderAtcLog();
+  }
+  function show() { renderView(true); if (!F.apt) renderAirports(); else renderAirports(); }
+  function init() {
+    $('#flBody').onclick = e => { const r = e.target.closest('tr[data-hex]'); if (!r) return; const a = F.byHex.get(r.dataset.hex); select(r.dataset.hex); if (a) MapView.focus(a.lon, a.lat, 32); };
+    $('#flHead').onclick = e => { const th = e.target.closest('th[data-s]'); if (!th) return; F.dir = F.sort === th.dataset.s ? -F.dir : (th.dataset.s === 'flight' || th.dataset.s === 'type' ? 1 : -1); F.sort = th.dataset.s; renderView(true); };
+    $('#flAlt').onchange = e => { F.filter.alt = e.target.value; renderView(true); MapView.drawFlights(); hud(); };
+    $('#flEm').onchange = e => { F.filter.emerg = e.target.checked; renderView(true); MapView.drawFlights(); hud(); };
+    $('#flMil').onchange = e => { F.filter.mil = e.target.checked; renderView(true); MapView.drawFlights(); hud(); };
+    $('#flLbl').checked = F.labels; $('#flLbl').onchange = e => { F.labels = e.target.checked; store.set('flLabels', F.labels); MapView.drawFlights(); };
+    $('#flAptHere').onclick = () => { const c = MapView.center(); F.aptFor = null; loadAirports(c.lat, c.lon, 'near the map centre'); };
+    $('#flFind').onsubmit = async e => {
+      e.preventDefault(); const q = $('#flQ').value.trim(); if (!q) return;
+      $('#flFindNote').textContent = 'Searching…';
+      try {
+        let hits;
+        if (API.flightFind) hits = await API.flightFind(q);
+        else { const Q = q.toUpperCase(); hits = API.simInst.flights().filter(a => [a.flight, a.reg, a.hex.toUpperCase()].includes(Q)); }
+        if (!hits.length) { $('#flFindNote').textContent = `No aircraft found for “${q}”. It may be on the ground with its transponder off, or outside ADS-B coverage.`; return; }
+        const a = hits[0]; a._t = Date.now(); if (!F.byHex.has(a.hex)) { F.list.push(a); F.byHex.set(a.hex, a); }
+        $('#flFindNote').textContent = ''; select(a.hex); MapView.focus(a.lon, a.lat, 32);
+      } catch (x) { $('#flFindNote').textContent = 'Search failed: ' + x.message; }
+    };
+    start();
+  }
+  return { init, show, select, visible, pos, refresh: fetchNow, selected: () => F.sel, trail: h => (F.trails.get(h) || []).map(p => [p[0], p[1]]).concat(F.byHex.get(h) ? [(p => [p.lon, p.lat])(pos(F.byHex.get(h)))] : []),
+    labels: () => F.labels, detail: (el, hex) => { el.innerHTML = `<header><h2>Aircraft</h2><button class="btn sm" id="dClose">Clear</button></header>` + card(F.byHex.get(hex) || F.selObj); bindCard(el); } };
 })();
 
 // ============================================================ SOURCES
@@ -1851,7 +2168,7 @@ async function renderSources() {
 }
 
 // ============================================================ routing & render loop
-const VIEWS = ['overview', 'feeds', 'alerts', 'radio', 'analytics', 'tv', 'sources'];
+const VIEWS = ['overview', 'feeds', 'alerts', 'radio', 'flights', 'analytics', 'tv', 'sources'];
 function route() {
   const v = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'overview';
   S.view = v;
@@ -1863,6 +2180,7 @@ function route() {
   if (v === 'analytics') renderAnalytics(true);
   if (v === 'tv') TV.render();
   if (v === 'radio') Radio.show();
+  if (v === 'flights') Flights.show();
   if (v === 'sources') renderSources();
   if (S.pinned && scrollY > 0) scrollTo({ top: 0 });
   updateBadge();
@@ -1889,7 +2207,8 @@ setInterval(() => Radio.renderIncidents(), 20000);
   chartDefaults();
   countryOptions($('#fCountry'), 'All countries');
   renderWatch(); Feed.init(); initAlerts(); initAnalytics(); TV.init(); Radio.init();
-  MapView.init(); placeSide(); syncToolbar(); renderDetail();
+  if (!S.base) S.base = API.server ? 'streets' : 'vector';
+  MapView.init(); placeSide(); syncToolbar(); renderDetail(); Flights.init();
   window.addEventListener('hashchange', route); route();
   loop();
   $('#boot').classList.add('done'); setTimeout(() => $('#boot').remove(), 600);

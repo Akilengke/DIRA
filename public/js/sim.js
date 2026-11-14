@@ -172,7 +172,65 @@
       return { id: 'sim_rx' + Date.now().toString(36) + txi, freq, channel, mode, text, lat, lon, ts: Date.now(), duration: +(3 + text.length / 16).toFixed(1), distress: core.distress(text), simulated: true };
     }
 
-    return { post, burst, backfill, events, incidents, transmission };
+    // ---- flights & air-traffic control (simulated) ----
+    const RAD = (typeof module === 'object' && module.exports) ? require('./radio') : self.ScavengeRadio;
+    const AL = [['KQA', 'Kenya', 'B788'], ['KQA', 'Kenya', 'E190'], ['ETH', 'Ethiopian', 'A359'], ['UAE', 'Emirates', 'B77W'], ['QTR', 'Qatari', 'A359'], ['THY', 'Turkish', 'A333'], ['BAW', 'Speedbird', 'B789'],
+      ['AFR', 'Air France', 'A359'], ['KLM', 'KLM', 'B77W'], ['DLH', 'Lufthansa', 'A346'], ['RWD', 'Rwandair', 'A332'], ['SAA', 'Springbok', 'A320'], ['JAL', 'Japan Air', 'B788'], ['DAL', 'Delta', 'A21N'], ['UAL', 'United', 'B738']];
+    const DIGITS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'niner'];
+    let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const APT = RAD.AIRPORTS, NBO = APT.find(a => a.icao === 'HKJK');
+    const FL = [];
+    for (let i = 0; i < 260; i++) {
+      const hub = rnd() < 0.4 ? NBO : APT[Math.floor(rnd() * APT.length)];
+      let other; do { other = APT[Math.floor(rnd() * APT.length)]; } while (other === hub || RAD.nm(hub.lat, hub.lon, other.lat, other.lon) < 150);
+      const [from, to] = rnd() < 0.5 ? [hub, other] : [other, hub];
+      const al = AL[Math.floor(rnd() * AL.length)], num = 100 + Math.floor(rnd() * 899);
+      const dist = RAD.nm(from.lat, from.lon, to.lat, to.lon);
+      FL.push({ hex: Math.floor(rnd() * 0xffffff).toString(16).padStart(6, '0'), flight: al[0] + num, spoken: `${al[1]} ${String(num).split('').map(d => DIGITS[d]).join(' ')}`, type: al[2],
+        reg: '5Y-' + String.fromCharCode(65 + Math.floor(rnd() * 26), 65 + Math.floor(rnd() * 26), 65 + Math.floor(rnd() * 26)), from, to, dist, speed: 430 + rnd() * 60, cruise: 33000 + Math.floor(rnd() * 7) * 1000, phase: rnd(),
+        squawk: String(1000 + Math.floor(rnd() * 6000)).replace(/^7[5-7]/, '62') });
+    }
+    function flights(now) {
+      now = now || Date.now();
+      return FL.map(f => {
+        const hrs = f.dist / f.speed + 0.6;                       // flight time plus turnaround
+        const p = ((now / 3600000) / hrs + f.phase) % 1, fly = Math.min(1, p * hrs / (f.dist / f.speed));
+        if (fly >= 1) return null;                                // parked at destination during turnaround
+        const ip = interp(f.from, f.to), a = ip(fly), b = ip(Math.min(1, fly + 0.002));
+        const edge = Math.min(fly, 1 - fly) * f.dist;             // nm from the nearer airport
+        const alt = Math.round(Math.min(f.cruise, edge * 320) / 100) * 100;
+        const climb = fly < 0.5 ? (edge * 320 < f.cruise ? 1800 : 0) : (edge * 320 < f.cruise ? -1500 : 0);
+        return { hex: f.hex, flight: f.flight, spoken: f.spoken, reg: f.reg, type: f.type, lat: a[1], lon: a[0], alt: alt < 50 ? 0 : alt, gs: Math.round(alt < 50 ? 18 : Math.min(f.speed, 160 + edge * 4)),
+          track: Math.round(bearing(a, b)), vr: climb, squawk: f.squawk, from: f.from.icao, to: f.to.icao, ground: alt < 50, seen: 0, simulated: true };
+      }).filter(Boolean);
+    }
+    function interp(A, B) { // great-circle interpolation without d3 (works in Node too)
+      const r = Math.PI / 180, l1 = A.lat * r, o1 = A.lon * r, l2 = B.lat * r, o2 = B.lon * r;
+      const d = 2 * Math.asin(Math.sqrt(Math.sin((l2 - l1) / 2) ** 2 + Math.cos(l1) * Math.cos(l2) * Math.sin((o2 - o1) / 2) ** 2));
+      return t => { const s1 = Math.sin((1 - t) * d) / Math.sin(d), s2 = Math.sin(t * d) / Math.sin(d);
+        const x = s1 * Math.cos(l1) * Math.cos(o1) + s2 * Math.cos(l2) * Math.cos(o2), y = s1 * Math.cos(l1) * Math.sin(o1) + s2 * Math.cos(l2) * Math.sin(o2), z = s1 * Math.sin(l1) + s2 * Math.sin(l2);
+        return [Math.atan2(y, x) / r, Math.atan2(z, Math.sqrt(x * x + y * y)) / r]; };
+    }
+    function bearing(a, b) { const r = Math.PI / 180, y = Math.sin((b[0] - a[0]) * r) * Math.cos(b[1] * r), x = Math.cos(a[1] * r) * Math.sin(b[1] * r) - Math.sin(a[1] * r) * Math.cos(b[1] * r) * Math.cos((b[0] - a[0]) * r); return (Math.atan2(y, x) / r + 360) % 360; }
+    const fl = n => n.toString().padStart(3, '0').split('').map(d => DIGITS[d]).join(' ');
+    /** A simulated controller or pilot call for an aircraft near `airport` (labelled simulated everywhere it shows). */
+    function atc(airport, list) {
+      const near = (list || flights()).filter(f => RAD.nm(f.lat, f.lon, airport.lat, airport.lon) < 120).sort((x, y) => x.alt - y.alt);
+      const f = near[Math.floor(Math.random() * Math.min(near.length, 6))];
+      const city = airport.city;
+      const lines = f ? [
+        [`${f.spoken}, ${city} Approach, descend flight level ${fl(Math.max(60, Math.round(f.alt / 1000) * 10 - 40))}, expect the ILS approach.`, 'Approach'],
+        [`${city} Approach, ${f.spoken}, descending flight level ${fl(Math.max(60, Math.round(f.alt / 1000) * 10 - 40))}.`, 'Approach'],
+        [`${f.spoken}, ${city} Tower, wind calm, cleared to land.`, 'Tower'],
+        [`${f.spoken}, contact ${city} Control, good day.`, 'Approach'],
+        [`${city} Ground, ${f.spoken}, request taxi for departure.`, 'Ground']
+      ] : [[`All stations, ${city} information Bravo is current. Wind calm, visibility more than ten kilometres.`, 'ATIS']];
+      const [text, unit] = lines[Math.floor(Math.random() * lines.length)];
+      return { id: 'sim_atc' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), freq: null, channel: `${airport.icao} ${unit} (sim)`, mode: 'am', aviation: true, airport: airport.icao,
+        text, lat: airport.lat, lon: airport.lon, ts: Date.now(), duration: +(2 + text.length / 16).toFixed(1), distress: null, simulated: true, flight: f && f.hex };
+    }
+
+    return { post, burst, backfill, events, incidents, transmission, flights, atc };
   }
 
   return { create, PLATFORMS: Object.keys(PLATFORMS) };

@@ -12,6 +12,8 @@ const ai = require('./engine/ai');
 const earth = require('./connectors/earth');
 const social = require('./connectors/social');
 const radioDir = require('./connectors/radio');
+const flights = require('./connectors/flights');
+const demoSim = process.env.SCAVENGE_DEMO === '1' ? require('../public/js/sim').create(core) : null;
 const radioRef = require('../public/js/radio');
 const { createSDR } = require('./engine/sdr');
 const { createTX, createIntercom } = require('./engine/tx');
@@ -78,6 +80,14 @@ const routes = {
   'GET /api/radio/log': q => state.radioLog.slice(0, +q.get('limit') || 100),
   'GET /api/radio/stations': q => radioDir.stations({ country: q.get('country'), q: q.get('q'), tag: q.get('tag'), limit: q.get('limit') }),
   'GET /api/radio/kiwi': q => radioDir.nearestKiwi(+q.get('lat') || 0, +q.get('lon') || 0, +q.get('hz') || 2182000, q.get('mode') || 'usb'),
+  // ---- flights
+  'GET /api/flights': q => {
+    if (demoSim) { const [a, b, c, d] = ['lamin', 'lomin', 'lamax', 'lomax'].map(k => +q.get(k)); return { aircraft: demoSim.flights().filter(f => f.lat >= a && f.lat <= c && f.lon >= b && f.lon <= d), source: 'simulator', partial: false }; }
+    return flights.inBox(Object.fromEntries(['lamin', 'lomin', 'lamax', 'lomax'].map(k => [k, q.get(k)])));
+  },
+  'GET /api/flights/find': q => demoSim ? demoSim.flights().filter(f => [f.flight, f.reg, f.hex].some(x => x && x.toUpperCase() === String(q.get('q') || '').trim().toUpperCase())) : flights.find(q.get('q')),
+  'GET /api/flights/route': q => demoSim ? (() => { const f = demoSim.flights().find(x => x.flight === q.get('callsign')); const A = radioRef.AIRPORTS; return f ? { codes: f.from + '-' + f.to, plausible: true, airports: [A.find(a => a.icao === f.from), A.find(a => a.icao === f.to)] } : null; })() : flights.route(q.get('callsign'), q.get('lat'), q.get('lon')),
+  'GET /api/airports/near': q => flights.nearAirports(DATA, q.get('lat'), q.get('lon'), q.get('n')),
   'GET /api/sdr/status': () => sdr.status(),
   'POST /api/sdr/tune': async (q, req) => { const b = await readBody(req); return sdr.start({ freqs: b.freqs || [b.hz], mode: b.mode, squelch: b.squelch, gain: b.gain }); },
   'POST /api/sdr/stop': () => { sdr.stop(); return sdr.status(); },
