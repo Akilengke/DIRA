@@ -1,22 +1,24 @@
 <meta charset="utf-8">
 <title>Scavenge</title>
+<link rel="icon" type="image/svg+xml" href="logo.svg">
 <meta name="claude:viewport-fit-sides" content="cover">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>
-/* Layout concept: an orbital command deck. The world map is a permanently docked viewport at the top
-   (sticky, resizable, fullscreen-able); every section scrolls beneath it. One committed dark look (night ops). */
+/* Layout concept: a tactical operations console. Classification banner, a docked common operating picture (map)
+   with an inspector, then mission panels on a strict grid. Graphite surfaces, one signal colour (tactical green),
+   amber for attention and red for threats; no glow, no decoration. Single committed dark theme. */
 :root {
   color-scheme: dark;
-  --void: #03060c; --hull: #08101b; --hull-2: #0c1726; --line: #18293e; --line-2: #24405f;
-  --fg: #d6e4f3; --dim: #7a8ea7; --ion: #4ee3ff; --ion-soft: rgba(78, 227, 255, .14);
-  --plasma: #ffa94d; --crit: #ff4f6d; --ok: #3ff2a4;
-  --land: #0f1d2e; --land-line: #22405e; --night: rgba(0, 3, 10, .42);
-  --f-display: "Chakra Petch", "Rajdhani", "Segoe UI", system-ui, sans-serif;
+  --void: #080a0b; --hull: #0e1214; --hull-2: #12171a; --line: #1f272a; --line-2: #2d393d;
+  --fg: #d9dfdb; --dim: #84918c; --ion: #6ccf9a; --ion-soft: rgba(108, 207, 154, .11);
+  --plasma: #f0b43c; --crit: #ff5a4f; --ok: #8fd16a;
+  --land: #171d20; --land-line: #2e3b3f; --night: rgba(0, 0, 0, .38);
+  --f-display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
   --f-body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
-  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
   --s-1: .75rem; --s-2: .8125rem; --s-3: .9375rem; --s-4: 1.125rem; --s-5: 1.5rem;
   --mapH: 48vh;
 }
@@ -24,54 +26,57 @@
 html, body { background: var(--void); color: var(--fg); }
 body {
   font: 400 var(--s-3)/1.5 var(--f-body); margin: 0; min-height: 100%;
-  background: radial-gradient(1200px 600px at 70% -10%, rgba(78,227,255,.07), transparent 60%), var(--void);
+  background: var(--void);
 }
-body::after { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 95; background: repeating-linear-gradient(to bottom, rgba(255,255,255,.016) 0 1px, transparent 1px 3px); }
+.classif { display: flex; justify-content: center; gap: 18px; background: #1d5c3a; color: #e9f5ee; font: 600 11px/1 var(--f-display); letter-spacing: .28em; text-transform: uppercase; padding: 5px 16px; }
+.classif span + span::before { content: "//"; margin-right: 18px; opacity: .6; }
+@media (max-width: 760px) { .classif span:last-child { display: none; } }
+@media (max-width: 480px) { .classif { letter-spacing: .18em; gap: 10px; } .classif span + span::before { margin-right: 10px; } .classif .long { display: none; } .classif .short { display: inline; } }
+.classif .short { display: none; }
 body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 40; background: var(--void); }
 button, input, select { font: inherit; color: inherit; }
 :focus-visible { outline: 2px solid var(--ion); outline-offset: 2px; }
 a { color: var(--ion); }
 .mono { font-family: var(--f-mono); font-variant-numeric: tabular-nums; }
-.label { font: 500 var(--s-1)/1.2 var(--f-display); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); }
-mark { background: rgba(255,169,77,.22); color: var(--plasma); padding: 0 2px; }
+.label { font: 600 var(--s-1)/1.2 var(--f-display); letter-spacing: .16em; text-transform: uppercase; color: var(--dim); }
+mark { background: rgba(240,180,60,.22); color: var(--plasma); padding: 0 2px; }
 
 .wrap { padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); max-width: 1720px; margin: 0 auto; }
 
 /* ---------- dock (header + map + tabs) ---------- */
 .dock { background: var(--void); z-index: 30; border-bottom: 1px solid var(--line); }
-.dock.pinned { position: sticky; top: env(safe-area-inset-top, 0px); box-shadow: 0 12px 30px rgba(0,0,0,.55); }
+.dock.pinned { position: sticky; top: env(safe-area-inset-top, 0px); box-shadow: 0 1px 0 var(--line), 0 10px 24px rgba(0,0,0,.5); }
 .top { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; padding-block: 10px; }
 .brand { display: flex; align-items: center; gap: 10px; }
 .brand svg { width: 34px; height: 34px; flex: none; }
-.brand h1 { margin: 0; font: 700 1.3rem/1 var(--f-display); letter-spacing: .32em; }
-.brand small { display: block; font: 500 .58rem/1.4 var(--f-display); letter-spacing: .28em; color: var(--ion); text-transform: uppercase; margin-top: 3px; }
-.sweep { transform-origin: 19px 19px; animation: spin 4s linear infinite; }
+.brand h1 { margin: 0; font: 700 1.55rem/1 var(--f-display); letter-spacing: .26em; }
+.brand small { display: block; font: 600 .66rem/1.4 var(--f-display); letter-spacing: .3em; color: var(--dim); text-transform: uppercase; margin-top: 2px; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.mode { font: 600 var(--s-1)/1 var(--f-display); letter-spacing: .16em; padding: 6px 10px; border: 1px solid currentColor; color: var(--ok); display: inline-flex; gap: 8px; align-items: center; text-transform: uppercase; }
+.mode { font: 600 var(--s-1)/1 var(--f-display); letter-spacing: .18em; padding: 5px 9px; border: 1px solid currentColor; color: var(--ok); display: inline-flex; gap: 8px; align-items: center; text-transform: uppercase; }
 .mode.sim { color: var(--plasma); }
-.mode i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; box-shadow: 0 0 10px currentColor; animation: blink 1.6s infinite; }
+.mode i { width: 7px; height: 7px; background: currentColor; animation: blink 2s steps(2) infinite; }
 @keyframes blink { 50% { opacity: .25; } }
 .clock { font: 500 var(--s-1)/1.35 var(--f-mono); color: var(--dim); text-align: right; margin-left: auto; }
 .clock b { color: var(--fg); font-weight: 500; }
 .watch { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; flex: 1 1 340px; min-width: 0; }
 .watch form { display: flex; flex: 1 1 150px; min-width: 0; }
 .watch input { flex: 1; min-width: 0; background: var(--hull); border: 1px solid var(--line-2); padding: 6px 10px; font: 400 var(--s-2) var(--f-mono); }
-.watch input::placeholder, .field input::placeholder { color: #4d6079; }
+.watch input::placeholder, .field input::placeholder { color: #56635f; }
 .chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 9px; border: 1px solid var(--line-2); background: var(--ion-soft); font: 500 var(--s-1) var(--f-mono); color: var(--ion); }
 .chip button { border: 0; background: none; color: var(--dim); cursor: pointer; padding: 0 4px; font-size: 14px; line-height: 1; }
 .chip button:hover { color: var(--crit); }
 
 .deck { display: grid; grid-template-columns: minmax(0, 1fr) 360px; gap: 10px; }
-.map { position: relative; height: var(--mapH); min-height: 260px; background: radial-gradient(ellipse at center, rgba(78,227,255,.06), transparent 70%), #040a13; border: 1px solid var(--line); overflow: hidden; cursor: grab; touch-action: none; }
+.map { position: relative; height: var(--mapH); min-height: 260px; background: #0b0f11; border: 1px solid var(--line); overflow: hidden; cursor: grab; touch-action: none; }
 .map:active { cursor: grabbing; }
 .map svg { width: 100%; height: 100%; display: block; }
 .map .country { fill: var(--land); stroke: var(--land-line); stroke-width: .6; vector-effect: non-scaling-stroke; transition: fill .6s; }
 .map .country:hover { stroke: var(--ion); stroke-width: 1.2; }
 .map .country.sel { stroke: var(--plasma); stroke-width: 1.8; }
 .map.sat-on .country { fill: transparent !important; stroke: rgba(150,230,255,.35); }
-.map.sat-on .country:hover { fill: rgba(78,227,255,.12) !important; }
-.map.sat-on .country.sel { fill: rgba(255,169,77,.14) !important; }
-.map .grat { fill: none; stroke: rgba(78,227,255,.07); stroke-width: .5; vector-effect: non-scaling-stroke; }
+.map.sat-on .country:hover { fill: rgba(108,207,154,.12) !important; }
+.map.sat-on .country.sel { fill: rgba(240,180,60,.14) !important; }
+.map .grat { fill: none; stroke: rgba(108,207,154,.07); stroke-width: .5; vector-effect: non-scaling-stroke; }
 .map .night { fill: var(--night); pointer-events: none; }
 .map .wx text, .map .tvp text { font: 500 7px var(--f-mono); paint-order: stroke; stroke: #02060c; stroke-width: 2.2px; pointer-events: none; }
 .map .pt { cursor: pointer; }
@@ -81,14 +86,12 @@ mark { background: rgba(255,169,77,.22); color: var(--plasma); padding: 0 2px; }
 @keyframes ring { from { transform: scale(1); opacity: .9; } to { transform: scale(3.4); opacity: 0; } }
 .ping { fill: none; stroke-width: .6; animation: ping 1.4s ease-out forwards; transform-box: fill-box; transform-origin: center; pointer-events: none; }
 @keyframes ping { from { transform: scale(1); opacity: 1; } to { transform: scale(7); opacity: 0; } }
-.scan { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(90deg, transparent, rgba(78,227,255,.08) 48%, rgba(78,227,255,.25) 50%, transparent 52%); background-size: 40% 100%; background-repeat: no-repeat; animation: scan 9s linear infinite; mix-blend-mode: screen; }
-@keyframes scan { from { background-position: -40% 0; } to { background-position: 140% 0; } }
-.hud { position: absolute; pointer-events: none; font: 500 11px/1.4 var(--f-mono); color: var(--ion); text-shadow: 0 0 6px rgba(78,227,255,.6); }
+.hud { position: absolute; pointer-events: none; font: 500 11px/1.4 var(--f-mono); color: var(--ion); text-shadow: 0 1px 2px #000; }
 .hud.tl { top: 48px; left: 12px; } .hud.br { bottom: 30px; right: 12px; text-align: right; color: var(--dim); text-shadow: none; }
 .toolbar { position: absolute; top: 8px; left: 8px; display: flex; flex-wrap: wrap; gap: 4px; z-index: 3; max-width: calc(100% - 200px); }
-.tb { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-2); background: rgba(3,8,16,.82); backdrop-filter: blur(6px); padding: 6px 10px; cursor: pointer; font: 600 11px/1 var(--f-display); letter-spacing: .12em; text-transform: uppercase; color: var(--fg); }
+.tb { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-2); background: rgba(10,13,15,.9); padding: 6px 10px; cursor: pointer; font: 600 11px/1 var(--f-display); letter-spacing: .12em; text-transform: uppercase; color: var(--fg); }
 .tb:hover { border-color: var(--ion); color: var(--ion); }
-.tb[aria-pressed="true"] { border-color: var(--ion); color: var(--ion); background: rgba(10,40,55,.9); box-shadow: inset 0 0 12px rgba(78,227,255,.25); }
+.tb[aria-pressed="true"] { border-color: var(--ion); color: var(--ion); background: rgba(10,40,55,.9); box-shadow: inset 0 0 12px rgba(108,207,154,.25); }
 .tb svg { width: 13px; height: 13px; }
 .layers { position: absolute; top: 8px; right: 8px; z-index: 3; background: rgba(3,8,16,.86); border: 1px solid var(--line-2); backdrop-filter: blur(6px); max-height: calc(100% - 16px); overflow: auto; width: 214px; }
 .layers > button { width: 100%; text-align: left; border: 0; background: none; padding: 8px 10px; cursor: pointer; display: flex; justify-content: space-between; }
@@ -104,14 +107,14 @@ mark { background: rgba(255,169,77,.22); color: var(--plasma); padding: 0 2px; }
 .legend { position: absolute; left: 48px; bottom: 8px; right: 260px; display: flex; flex-wrap: wrap; gap: 4px 12px; font: 500 10px var(--f-mono); color: var(--dim); pointer-events: none; }
 .legend span { display: inline-flex; align-items: center; gap: 5px; text-shadow: 0 0 4px #000; }
 .legend i { width: 7px; height: 7px; border-radius: 50%; }
-.tip { position: absolute; pointer-events: none; z-index: 5; max-width: 280px; background: rgba(3,8,16,.95); border: 1px solid var(--ion); padding: 8px 10px; font: 400 var(--s-1)/1.45 var(--f-body); box-shadow: 0 0 20px rgba(78,227,255,.2); }
+.tip { position: absolute; pointer-events: none; z-index: 5; max-width: 280px; background: rgba(3,8,16,.95); border: 1px solid var(--ion); padding: 8px 10px; font: 400 var(--s-1)/1.45 var(--f-body); box-shadow: 0 0 20px rgba(108,207,154,.2); }
 .tip b { font-family: var(--f-display); letter-spacing: .06em; }
 .deck:fullscreen { background: var(--void); padding: 10px; grid-template-rows: 100%; height: 100vh; }
 .deck.fs { position: fixed; inset: 0; z-index: 90; background: var(--void); padding: calc(10px + env(safe-area-inset-top, 0px)) calc(10px + env(safe-area-inset-right, 0px)) calc(10px + env(safe-area-inset-bottom, 0px)) calc(10px + env(safe-area-inset-left, 0px)); grid-template-rows: 100%; }
 .deck:fullscreen .map, .deck.fs .map, .deck:fullscreen .side, .deck.fs .side { height: 100%; }
 
 .side { height: var(--mapH); min-height: 260px; display: flex; flex-direction: column; background: linear-gradient(180deg, var(--hull-2), var(--hull)); border: 1px solid var(--line); min-width: 0; position: relative; }
-.side::before { content: ""; position: absolute; top: -1px; left: -1px; width: 12px; height: 12px; border: 2px solid var(--ion); border-right: 0; border-bottom: 0; }
+.side::before { content: none; }
 .stabs { display: flex; border-bottom: 1px solid var(--line); flex: none; }
 .stabs button { flex: 1; border: 0; background: none; padding: 10px 6px; cursor: pointer; font: 600 11px/1 var(--f-display); letter-spacing: .14em; text-transform: uppercase; color: var(--dim); border-bottom: 2px solid transparent; }
 .stabs button[aria-selected="true"] { color: var(--ion); border-bottom-color: var(--ion); }
@@ -119,9 +122,9 @@ mark { background: rgba(255,169,77,.22); color: var(--plasma); padding: 0 2px; }
 .spane[hidden] { display: none; }
 
 .tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; margin-top: 8px; }
-.tabs a { flex: none; text-decoration: none; color: var(--dim); font: 600 var(--s-2)/1 var(--f-display); letter-spacing: .16em; text-transform: uppercase; padding: 11px 16px; border-bottom: 2px solid transparent; position: relative; }
+.tabs a { flex: none; text-decoration: none; color: var(--dim); font: 600 .9rem/1 var(--f-display); letter-spacing: .14em; text-transform: uppercase; padding: 11px 15px; border-bottom: 2px solid transparent; position: relative; }
 .tabs a:hover { color: var(--fg); }
-.tabs a[aria-current="page"] { color: var(--ion); border-bottom-color: var(--ion); background: linear-gradient(to top, var(--ion-soft), transparent); }
+.tabs a[aria-current="page"] { color: var(--fg); border-bottom-color: var(--ion); background: var(--hull); }
 .tabs a .badge { position: absolute; top: 5px; right: 2px; min-width: 16px; padding: 1px 4px; font: 600 10px/14px var(--f-mono); background: var(--crit); color: #fff; text-align: center; }
 
 @media (max-width: 1080px) {
@@ -140,21 +143,19 @@ mark { background: rgba(255,169,77,.22); color: var(--plasma); padding: 0 2px; }
 main { padding-block: 14px 56px; }
 .kpis { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); margin-bottom: 14px; }
 .kpi { background: var(--hull); padding: 10px 14px; min-width: 0; }
-.kpi .v { font: 600 1.45rem/1.1 var(--f-display); margin-top: 5px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kpi .v { font: 600 1.75rem/1.05 var(--f-display); letter-spacing: .02em; margin-top: 5px; font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .kpi .v small { font: 500 var(--s-1) var(--f-mono); color: var(--dim); margin-left: 4px; }
 .kpi .spark { height: 20px; width: 100%; display: block; margin-top: 4px; }
 .v.pos { color: var(--ok); } .v.neg { color: var(--crit); } .v.warn { color: var(--plasma); }
 @media (max-width: 1100px) { .kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 @media (max-width: 560px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 
-.panel { position: relative; background: linear-gradient(180deg, var(--hull-2), var(--hull)); border: 1px solid var(--line); padding: 14px 16px; min-width: 0; }
-.panel::before, .panel::after { content: ""; position: absolute; width: 12px; height: 12px; border: 2px solid var(--ion); pointer-events: none; }
-.panel::before { top: -1px; left: -1px; border-right: 0; border-bottom: 0; }
-.panel::after { bottom: -1px; right: -1px; border-left: 0; border-top: 0; }
-.panel > header, .spane > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
-h2 { margin: 0; font: 600 var(--s-2)/1.2 var(--f-display); letter-spacing: .18em; text-transform: uppercase; text-wrap: balance; }
-h2::before { content: "▸ "; color: var(--ion); }
-.btn { border: 1px solid var(--line-2); background: var(--hull); padding: 7px 12px; cursor: pointer; font: 600 var(--s-1)/1 var(--f-display); letter-spacing: .14em; text-transform: uppercase; }
+.panel { position: relative; background: var(--hull); border: 1px solid var(--line); padding: 14px 16px; min-width: 0; }
+.panel > header, .spane > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: -14px -16px 12px; padding: 9px 16px; border-bottom: 1px solid var(--line); background: var(--hull-2); flex-wrap: wrap; }
+.spane > header { margin: -12px -14px 12px; padding: 9px 14px; }
+h2 { margin: 0; font: 600 .95rem/1.2 var(--f-display); letter-spacing: .14em; text-transform: uppercase; text-wrap: balance; }
+h2::before { content: ""; display: inline-block; width: 7px; height: 7px; background: var(--ion); margin-right: 9px; vertical-align: 1px; }
+.btn { border: 1px solid var(--line-2); background: var(--hull-2); padding: 7px 12px; cursor: pointer; font: 600 .8rem/1 var(--f-display); letter-spacing: .12em; text-transform: uppercase; }
 .btn:hover { border-color: var(--ion); color: var(--ion); }
 .btn.primary { background: var(--ion); color: #021018; border-color: var(--ion); }
 .btn.primary:hover { filter: brightness(1.1); color: #021018; }
@@ -171,7 +172,7 @@ h2::before { content: "▸ "; color: var(--ion); }
 .topics { display: flex; flex-wrap: wrap; gap: 6px; }
 .tchip { display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border: 1px solid var(--line-2); background: var(--hull); cursor: pointer; font: 600 11px/1 var(--f-display); letter-spacing: .1em; text-transform: uppercase; color: var(--dim); }
 .tchip i { width: 8px; height: 8px; transform: rotate(45deg); }
-.tchip[aria-pressed="true"] { color: var(--fg); border-color: currentColor; background: var(--hull-2); box-shadow: inset 0 0 14px rgba(78,227,255,.12); }
+.tchip[aria-pressed="true"] { color: var(--fg); border-color: currentColor; background: var(--hull-2); box-shadow: inset 0 0 14px rgba(108,207,154,.12); }
 .ttag { display: inline-flex; align-items: center; gap: 5px; font: 500 10px/1 var(--f-mono); padding: 3px 6px; border: 1px solid; text-transform: uppercase; letter-spacing: .06em; }
 
 /* side-pane content */
@@ -192,7 +193,7 @@ h2::before { content: "▸ "; color: var(--ion); }
 .ev .t { font-size: var(--s-2); line-height: 1.35; overflow-wrap: anywhere; }
 .ev .t small { display: block; color: var(--plasma); font: 500 11px var(--f-mono); letter-spacing: .06em; }
 .ev .m { font: 400 11px var(--f-mono); color: var(--dim); white-space: nowrap; }
-.sev-critical { background: var(--crit); box-shadow: 0 0 10px var(--crit); } .sev-warning { background: var(--plasma); } .sev-info { background: var(--ion); }
+.sev-critical { background: var(--crit); } .sev-warning { background: var(--plasma); } .sev-info { background: var(--ion); }
 .tag { font: 500 10px/1 var(--f-mono); padding: 3px 6px; border: 1px solid; text-transform: uppercase; letter-spacing: .08em; }
 .tag.pos { color: var(--ok); } .tag.neg { color: var(--crit); } .tag.neu { color: var(--dim); } .tag.sim { color: var(--plasma); }
 .meter { display: inline-block; width: 60px; height: 4px; background: var(--line); position: relative; vertical-align: middle; }
@@ -258,7 +259,7 @@ td.num { font-family: var(--f-mono); text-align: right; } th.num { text-align: r
 .barrow { display: grid; grid-template-columns: minmax(0, 120px) minmax(0, 1fr) 48px; gap: 10px; align-items: center; font-size: var(--s-2); }
 .barrow span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .barrow .track { height: 8px; background: var(--line); position: relative; }
-.barrow .track b { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, var(--ion), rgba(78,227,255,.4)); }
+.barrow .track b { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, var(--ion), rgba(108,207,154,.4)); }
 .barrow .n { font: 500 var(--s-1) var(--f-mono); text-align: right; color: var(--dim); }
 .click { cursor: pointer; } .click:hover span:first-child, .trow:hover td { color: var(--ion); }
 .trow { cursor: pointer; }
@@ -298,41 +299,76 @@ td.num { font-family: var(--f-mono); text-align: right; } th.num { text-align: r
 .attrib:empty { display: none; }
 .attrib b { color: var(--plasma); font-weight: 500; }
 .hud.fl { top: 66px; left: 12px; color: #e8f1ff; }
-.map.tiles-on .country { fill: transparent; stroke: rgba(78,227,255,.28); }
+.hud.tr { top: 84px; left: 12px; color: var(--plasma); }
+.map.tiles-on .country { fill: transparent; stroke: rgba(108,207,154,.28); }
 .map.tiles-on .grat { display: none; }
 .map.tiles-on .night { fill: rgba(0,3,10,.22); }
-.map .trail { fill: none; stroke: #ffa94d; stroke-width: 1.6; stroke-dasharray: 3 2; vector-effect: non-scaling-stroke; pointer-events: none; }
+.map .trail { fill: none; stroke: #f0b43c; stroke-width: 1.6; stroke-dasharray: 3 2; vector-effect: non-scaling-stroke; pointer-events: none; }
 .map .plane text { pointer-events: none; }
 .fltop { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: start; }
 @media (max-width: 1100px) { .fltop { grid-template-columns: minmax(0, 1fr); } }
-tr.on td { background: rgba(255,169,77,.12); }
+tr.on td { background: rgba(240,180,60,.12); }
 .apt { padding: 9px 0; border-bottom: 1px solid var(--line); display: grid; gap: 2px; }
 .apt b { font-family: var(--f-display); letter-spacing: .06em; color: var(--ion); }
 .apt .m { font: 400 11px var(--f-mono); color: var(--dim); }
 .fq { border: 1px solid var(--line-2); background: var(--void); padding: 4px 8px; cursor: pointer; font: 500 11px var(--f-mono); color: var(--fg); }
 .fq b { color: var(--plasma); font-weight: 600; margin-right: 4px; }
 .fq:hover { border-color: var(--ion); }
+.authbtn { border: 1px solid var(--line-2); background: var(--hull); padding: 6px 12px; cursor: pointer; font: 600 11px/1 var(--f-display); letter-spacing: .14em; text-transform: uppercase; color: var(--fg); }
+.authbtn.on { border-color: var(--ok); color: var(--ok); }
+.modal { position: fixed; inset: 0; z-index: 98; background: rgba(2,4,6,.72); display: grid; place-items: center; padding: 16px; }
+.modal[hidden] { display: none; }
+.modalbox { width: min(420px, 100%); display: grid; gap: 12px; }
+.acc { grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); align-items: start; }
+.acc .panel { display: grid; gap: 10px; }
+.acc .who { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 10px; padding: 8px 0; border-top: 1px solid var(--line); align-items: center; }
+.acc .who b { font: 600 var(--s-3) var(--f-mono); overflow-wrap: anywhere; }
+.acc .who .m { font: 400 11px var(--f-mono); color: var(--dim); grid-column: 1 / 2; }
+.acc details { border: 1px solid var(--line); padding: 8px 10px; background: var(--void); }
+.acc summary { cursor: pointer; font: 600 11px var(--f-display); letter-spacing: .12em; text-transform: uppercase; color: var(--plasma); }
+.acc ol { margin: 8px 0; padding-left: 18px; font-size: var(--s-2); line-height: 1.6; }
+.copyline { display: flex; gap: 6px; align-items: center; min-width: 0; }
+.copyline code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; font: 400 11px var(--f-mono); background: var(--hull); border: 1px solid var(--line); padding: 5px 7px; }
+.chipst { font: 600 10px/1 var(--f-display); letter-spacing: .12em; text-transform: uppercase; padding: 4px 7px; border: 1px solid currentColor; }
+.radarbar { position: absolute; left: 50%; transform: translateX(-50%); bottom: 8px; z-index: 3; display: flex; align-items: center; gap: 8px; background: rgba(3,8,12,.82); border: 1px solid var(--line-2); padding: 4px 8px; font: 500 11px var(--f-mono); color: var(--fg); }
+.radarbar[hidden] { display: none; }
+.radarbar .tb { width: 26px; height: 24px; padding: 0; justify-content: center; }
+.radarbar input { width: 140px; accent-color: var(--ion); }
+.map .czone { cursor: pointer; vector-effect: non-scaling-stroke; stroke-width: 1.2; stroke-dasharray: 4 3; }
+.map .czone:hover { stroke-width: 2; }
+.map .clabel { font: 600 11px var(--f-display); letter-spacing: .08em; text-transform: uppercase; paint-order: stroke; stroke: #05080a; stroke-width: 3px; pointer-events: none; }
+.map .inc text { font: 700 9px var(--f-mono); paint-order: stroke; stroke: #05080a; stroke-width: 2.5px; pointer-events: none; }
+.map .jam { fill: none; stroke-linecap: round; vector-effect: non-scaling-stroke; cursor: pointer; }
+.map .flow { fill: none; stroke-linecap: round; vector-effect: non-scaling-stroke; stroke-width: 3; opacity: .85; pointer-events: none; }
+.map .floodarea { fill: rgba(79,184,255,.16); stroke: #4fb8ff; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; stroke-width: 1.2; pointer-events: none; }
+.map .callout rect { fill: #12171a; stroke: var(--crit); stroke-width: 1; }
+.map .callout text { font: 600 10px var(--f-body); fill: var(--fg); }
+.map .callout text.h { font: 700 9px var(--f-display); letter-spacing: .12em; fill: var(--crit); text-transform: uppercase; }
+.tralert { display: grid; grid-template-columns: 4px minmax(0, 1fr) auto; gap: 10px; padding: 9px 4px 9px 0; border: 0; border-bottom: 1px solid var(--line); background: none; width: 100%; text-align: left; color: inherit; cursor: pointer; }
+.tralert:hover { background: var(--ion-soft); }
+.tralert b { font: 600 var(--s-2) var(--f-body); }
+.tralert .d { font: 400 11px/1.4 var(--f-mono); color: var(--dim); margin-top: 3px; overflow-wrap: anywhere; }
 /* sos ticker */
-.sos { display: flex; align-items: center; gap: 12px; margin-top: 6px; padding: 7px 12px; border: 1px solid var(--crit); background: linear-gradient(90deg, rgba(255,79,109,.22), rgba(255,79,109,.05)); font-size: var(--s-2); animation: sosglow 1.6s ease-in-out infinite; min-width: 0; }
+.sos { display: flex; align-items: center; gap: 12px; margin-top: 6px; padding: 7px 12px; border: 1px solid var(--crit); background: rgba(255,90,79,.1); border-left: 4px solid var(--crit); font-size: var(--s-2); min-width: 0; }
 .sos[hidden] { display: none; }
 .sos b { font: 700 var(--s-1)/1 var(--f-display); letter-spacing: .18em; color: var(--crit); white-space: nowrap; }
 .sos span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-@keyframes sosglow { 50% { box-shadow: 0 0 22px rgba(255,79,109,.45); } }
+@keyframes sosglow { 50% { box-shadow: 0 0 22px rgba(255,90,79,.45); } }
 
 /* radio & sos */
 .radio { grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr) minmax(0, 1fr); align-items: start; }
 @media (max-width: 1250px) { .radio { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .radio .talk { grid-column: 1 / -1; } }
 @media (max-width: 820px) { .radio { grid-template-columns: minmax(0, 1fr); } }
 .inc { display: grid; grid-template-columns: 4px minmax(0, 1fr) auto; gap: 10px; padding: 9px 4px 9px 0; border: 0; border-bottom: 1px solid var(--line); background: none; text-align: left; width: 100%; color: inherit; cursor: pointer; }
-.inc:hover { background: rgba(255,79,109,.07); }
+.inc:hover { background: rgba(255,90,79,.07); }
 .inc .k { font: 600 10px/1 var(--f-display); letter-spacing: .14em; text-transform: uppercase; }
 .inc .t { font-size: var(--s-2); line-height: 1.35; margin-top: 4px; overflow-wrap: anywhere; }
 .inc .d { font: 400 11px/1.4 var(--f-mono); color: var(--dim); margin-top: 3px; overflow-wrap: anywhere; }
 .inc .m { font: 400 11px var(--f-mono); color: var(--dim); white-space: nowrap; }
 .bar-critical { background: var(--crit); box-shadow: 0 0 8px var(--crit); } .bar-warning { background: var(--plasma); } .bar-info { background: var(--ion); }
 .rx { background: #01040a; border: 1px solid var(--line-2); padding: 14px 16px; position: relative; overflow: hidden; }
-.rx::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(78,227,255,.035) 0 1px, transparent 1px 3px); }
-.rx .freq { font: 600 clamp(2rem, 4.2vw, 3rem)/1 var(--f-display); letter-spacing: .04em; color: var(--ion); text-shadow: 0 0 18px rgba(78,227,255,.55); font-variant-numeric: tabular-nums; }
+.rx::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(108,207,154,.035) 0 1px, transparent 1px 3px); }
+.rx .freq { font: 600 clamp(2rem, 4.2vw, 3rem)/1 var(--f-display); letter-spacing: .04em; color: var(--ion); text-shadow: 0 0 18px rgba(108,207,154,.55); font-variant-numeric: tabular-nums; }
 .rx .freq small { font-size: .4em; color: var(--dim); text-shadow: none; margin-left: 8px; letter-spacing: .14em; }
 .rx .chan { font: 500 var(--s-2) var(--f-mono); color: var(--fg); margin-top: 6px; }
 .rx .stat { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font: 500 11px var(--f-mono); color: var(--dim); }
@@ -352,7 +388,7 @@ tr.on td { background: rgba(255,169,77,.12); }
 .ch b { font: 500 var(--s-2) var(--f-body); } .ch span { font: 500 11px var(--f-mono); color: var(--ion); text-align: right; }
 .ch small { grid-column: 1 / -1; font-size: 11px; color: var(--dim); line-height: 1.35; }
 .rxlog .item { padding: 10px 0; border-bottom: 1px solid var(--line); display: grid; gap: 5px; }
-.rxlog .item.dis { background: linear-gradient(90deg, rgba(255,79,109,.12), transparent 70%); padding-left: 8px; border-left: 3px solid var(--crit); }
+.rxlog .item.dis { background: linear-gradient(90deg, rgba(255,90,79,.12), transparent 70%); padding-left: 8px; border-left: 3px solid var(--crit); }
 .rxlog .top { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; font: 500 11px var(--f-mono); color: var(--dim); }
 .rxlog .top b { color: var(--fg); font-weight: 500; }
 .rxlog p { margin: 0; font-size: var(--s-2); line-height: 1.5; overflow-wrap: anywhere; }
@@ -360,33 +396,33 @@ tr.on td { background: rgba(255,169,77,.12); }
 .dtag { font: 700 10px/1 var(--f-display); letter-spacing: .14em; padding: 3px 7px; color: #fff; background: var(--crit); }
 .dtag.warning { background: var(--plasma); color: #1a0d00; } .dtag.info { background: var(--line-2); }
 .ptt { display: grid; place-items: center; width: min(190px, 60vw); aspect-ratio: 1; max-width: 100%; margin: 12px auto; border-radius: 50%; border: 2px solid var(--line-2); cursor: pointer; user-select: none; touch-action: none;
-  background: radial-gradient(circle at 50% 40%, #13263c, #050b14 70%); color: var(--fg); font: 700 var(--s-2)/1.3 var(--f-display); letter-spacing: .16em; text-transform: uppercase; text-align: center; box-shadow: inset 0 0 30px rgba(78,227,255,.12), 0 0 0 6px rgba(78,227,255,.04); }
+  background: radial-gradient(circle at 50% 40%, #13263c, #050b14 70%); color: var(--fg); font: 700 var(--s-2)/1.3 var(--f-display); letter-spacing: .16em; text-transform: uppercase; text-align: center; box-shadow: inset 0 0 30px rgba(108,207,154,.12), 0 0 0 6px rgba(108,207,154,.04); }
 .ptt:hover { border-color: var(--ion); }
 .ptt small { display: block; font: 500 10px var(--f-mono); color: var(--dim); letter-spacing: .08em; margin-top: 6px; text-transform: none; }
-.ptt.live { border-color: var(--crit); color: #fff; background: radial-gradient(circle at 50% 40%, #6a1022, #1a0308 70%); box-shadow: 0 0 40px rgba(255,79,109,.55), inset 0 0 30px rgba(255,79,109,.4); animation: blink 1s infinite; }
-.ptt.air { border-color: rgba(255,169,77,.6); }
+.ptt.live { border-color: var(--crit); color: #fff; background: #5a1410; }
+.ptt.air { border-color: rgba(240,180,60,.6); }
 .ptt:disabled, .ptt[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }
 .ic { display: grid; gap: 4px; padding: 9px 0; border-bottom: 1px solid var(--line); }
 .ic .top { display: flex; gap: 10px; flex-wrap: wrap; font: 500 11px var(--f-mono); color: var(--dim); }
 .ic .top b { color: var(--ion); font-weight: 500; } .ic .top .me { color: var(--plasma); }
 .ic p { margin: 0; font-size: var(--s-2); overflow-wrap: anywhere; }
 .ic audio { width: 100%; height: 30px; }
-.warnbox { border: 1px solid rgba(255,169,77,.5); background: rgba(255,169,77,.07); padding: 10px 12px; font-size: var(--s-1); line-height: 1.55; color: var(--fg); }
+.warnbox { border: 1px solid rgba(240,180,60,.5); background: rgba(240,180,60,.07); padding: 10px 12px; font-size: var(--s-1); line-height: 1.55; color: var(--fg); }
 .warnbox b { color: var(--plasma); font-family: var(--f-display); letter-spacing: .1em; text-transform: uppercase; font-size: 11px; }
 .okbox { border: 1px solid rgba(63,242,164,.45); background: rgba(63,242,164,.06); padding: 10px 12px; font-size: var(--s-1); }
 .stations { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); gap: 8px; }
 .stn { border: 1px solid var(--line); background: var(--void); padding: 10px 12px; display: grid; gap: 6px; min-width: 0; }
-.stn[aria-current="true"] { border-color: var(--ion); box-shadow: inset 0 0 18px rgba(78,227,255,.15); }
+.stn[aria-current="true"] { border-color: var(--ion); box-shadow: inset 0 0 18px rgba(108,207,154,.15); }
 .stn b { font: 600 var(--s-2)/1.3 var(--f-display); letter-spacing: .04em; overflow-wrap: anywhere; }
 .stn .m { font: 400 11px var(--f-mono); color: var(--dim); overflow-wrap: anywhere; }
 .numtbl td:last-child { font: 600 var(--s-3) var(--f-mono); color: var(--plasma); text-align: right; white-space: nowrap; }
 .toasts { position: fixed; right: calc(16px + env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); z-index: 96; display: flex; flex-direction: column; gap: 8px; width: min(360px, calc(100vw - 32px)); }
-.toast { background: rgba(8,16,27,.96); border: 1px solid var(--plasma); padding: 10px 12px; box-shadow: 0 0 30px rgba(255,169,77,.18); animation: slidein .3s ease-out; font-size: var(--s-2); cursor: pointer; }
+.toast { background: #12171a; border: 1px solid var(--line-2); border-left: 4px solid var(--plasma); padding: 10px 12px; box-shadow: 0 8px 24px rgba(0,0,0,.5); animation: slidein .3s ease-out; font-size: var(--s-2); cursor: pointer; }
 .toast b { display: block; font: 600 var(--s-1)/1.4 var(--f-display); letter-spacing: .14em; text-transform: uppercase; color: var(--plasma); }
 .toast p { margin: 4px 0 0; overflow-wrap: anywhere; }
 .boot { position: fixed; inset: 0; z-index: 99; display: grid; place-items: center; background: var(--void); font: 500 var(--s-2) var(--f-mono); color: var(--ion); letter-spacing: .2em; text-transform: uppercase; transition: opacity .5s; }
 .boot.done { opacity: 0; pointer-events: none; }
-@media (max-width: 700px) { .hud.tl { top: 84px; } .hud.fl { top: 100px; } .attrib { max-width: 80%; } }
+@media (max-width: 700px) { .hud.tl { top: 84px; } .hud.fl { top: 100px; } .hud.tr { top: 116px; } .attrib { max-width: 80%; } }
 @media (max-width: 700px) { .toast { padding: 7px 10px; font-size: 12px; } .toast p { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } .sos { font-size: 12px; padding: 5px 8px; gap: 8px; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } .scan { display: none; } }
 </style>
@@ -394,17 +430,12 @@ tr.on td { background: rgba(255,169,77,.12); }
 <div class="boot" id="boot">Acquiring orbital uplink…</div>
 
 <div class="dock pinned" id="dock">
+  <div class="classif" role="note"><span>Unclassified</span><span><b class="long" style="font-weight:inherit">Open-source intelligence</b><b class="short" style="font-weight:inherit">OSINT</b></span><span>Simulated data marked SIM</span></div>
   <div class="wrap">
     <header class="top">
       <div class="brand">
-        <svg viewBox="0 0 38 38" aria-hidden="true">
-          <circle cx="19" cy="19" r="17" fill="none" stroke="#4ee3ff" stroke-opacity=".5"/>
-          <circle cx="19" cy="19" r="10" fill="none" stroke="#4ee3ff" stroke-opacity=".3"/>
-          <path d="M19 2v6M19 30v6M2 19h6M30 19h6" stroke="#4ee3ff" stroke-width="1.5"/>
-          <path class="sweep" d="M19 19 L19 2 A17 17 0 0 1 33.7 10.5 Z" fill="#4ee3ff" fill-opacity=".28"/>
-          <circle cx="19" cy="19" r="2.2" fill="#ffa94d"/>
-        </svg>
-        <div><h1>SCAVENGE</h1><small>Global signal intelligence</small></div>
+        <svg viewBox="220 220 640 640" aria-hidden="true"><rect x="220" y="220" width="640" height="640" rx="145" fill="#12151a" stroke="rgba(255,255,255,.14)" stroke-width="10"/><path d="M698 445A184 184 0 1 1 632 380" fill="none" stroke="#fff" stroke-width="26" stroke-linecap="round"/><circle cx="670" cy="410" r="23" fill="#ff5a36"/><path d="M473 615V465L607 615V465" fill="none" stroke="#fff" stroke-width="29" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <div><h1>SCAVENGE</h1><small>OSINT operations console</small></div>
       </div>
       <span class="mode sim" id="mode"><i></i><span>Linking</span></span>
       <div class="watch">
@@ -413,11 +444,11 @@ tr.on td { background: rgba(255,169,77,.12); }
         <form id="watchForm"><input id="watchInput" placeholder="+ add a word, #hashtag or phrase" aria-label="Add watch term" autocomplete="off"></form>
       </div>
       <div class="clock" id="clock"></div>
+      <button class="authbtn" id="authBtn" type="button">Sign in</button>
     </header>
 
     <section class="deck" id="deck" aria-label="World map">
       <div class="map" id="map">
-        <div class="scan"></div>
         <div class="toolbar">
           <span class="tbseg" role="group" aria-label="Map style">
             <button class="tb" data-base="vector" aria-pressed="true" title="Scavenge vector map"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M1 4l4-2 6 2 4-2v10l-4 2-6-2-4 2z"/><path d="M5 2v10M11 4v10"/></svg><span class="t">Map</span></button>
@@ -431,9 +462,11 @@ tr.on td { background: rgba(255,169,77,.12); }
         <div class="hud tl" id="hudTL">ORBITAL VIEW · EQUIRECTANGULAR</div>
         <div class="hud br" id="hudBR">LAT —  LON —</div>
         <div class="hud fl" id="hudFl"></div>
+        <div class="hud tr" id="hudTr"></div>
         <div class="attrib" id="attrib"></div>
         <div class="layers" id="layers"><button class="label" id="layersBtn" aria-expanded="true">Layers <span>▾</span></button><div class="body" id="layersBody"></div></div>
-        <div class="zoomctl"><button class="tb" id="zin" aria-label="Zoom in">+</button><button class="tb" id="zout" aria-label="Zoom out">−</button><button class="tb" id="zreset" aria-label="Reset view">⌖</button></div>
+        <div class="zoomctl"><button class="tb" id="zin" aria-label="Zoom in">+</button><button class="tb" id="zout" aria-label="Zoom out">−</button><button class="tb" id="zreset" aria-label="Reset view">⌖</button><button class="tb" id="zfull" aria-label="Full screen map" title="Full screen (F)">⛶</button></div>
+        <div class="radarbar" id="radarBar" hidden><button class="tb" id="radarPlay" aria-label="Play radar loop">▶</button><input type="range" id="radarSlider" min="0" max="0" value="0" aria-label="Radar time"><span id="radarTime"></span></div>
         <div class="legend" id="legend"></div>
         <div class="tip" id="tip" hidden></div>
       </div>
@@ -450,7 +483,7 @@ tr.on td { background: rgba(255,169,77,.12); }
     </section>
 
     <nav class="tabs" id="tabs" aria-label="Sections">
-      <a href="#overview">Overview</a><a href="#feeds">Live feeds</a><a href="#alerts">Alerts<span class="badge" id="alertBadge" hidden>0</span></a><a href="#radio">Radio &amp; SOS<span class="badge" id="sosBadge" hidden>0</span></a><a href="#flights">Flights</a><a href="#analytics">Analytics</a><a href="#tv">Live TV</a><a href="#sources">Sources</a>
+      <a href="#overview">Overview</a><a href="#feeds">Live feeds</a><a href="#alerts">Alerts<span class="badge" id="alertBadge" hidden>0</span></a><a href="#radio">Radio &amp; SOS<span class="badge" id="sosBadge" hidden>0</span></a><a href="#flights">Flights</a><a href="#analytics">Analytics</a><a href="#tv">Live TV</a><a href="#accounts">Accounts</a><a href="#sources">Sources</a>
     </nav>
     <div class="sos" id="sos" hidden role="alert"><b>⚠ <span id="sosLabel" style="overflow:visible">SOS</span></b><span id="sosText"></span><button class="btn sm" id="sosView">Locate</button><button class="btn sm" id="sosHide" aria-label="Dismiss">×</button></div>
   </div>
@@ -671,6 +704,14 @@ tr.on td { background: rgba(255,169,77,.12); }
   </section>
 
   <!-- SOURCES -->
+  <section class="view grid" id="v-accounts" hidden>
+    <div class="panel"><header><h2>Connected accounts</h2><span class="label" id="accSum"></span></header>
+      <p class="note" id="accIntro" style="margin:0;max-width:90ch"></p>
+      <div id="accGate" style="margin-top:12px"></div>
+    </div>
+    <div class="grid acc" id="accGrid"></div>
+  </section>
+
   <section class="view grid" id="v-sources" hidden>
     <div class="panel"><header><h2>Data sources</h2></header><p class="note" id="srcNote" style="max-width:80ch;margin:0"></p></div>
     <div class="grid src" id="srcGrid"></div>
@@ -684,6 +725,37 @@ SCAVENGE_DEMO=1 node server/index.js   # offline simulator</div>
   <div id="sideSlot" style="margin-top:14px"></div>
 </main>
 <div class="toasts" id="toasts" aria-live="polite"></div>
+<div class="modal" id="authModal" hidden role="dialog" aria-modal="true" aria-labelledby="authTitle">
+  <form class="panel modalbox" id="authForm">
+    <header><h2 id="authTitle">Operator sign-in</h2><button class="btn sm" type="button" id="authClose" aria-label="Close">×</button></header>
+    <p class="note" id="authNote" style="margin-top:0"></p>
+    <div class="field" id="authCodeF"><label class="label" for="authCode">Setup code</label><input id="authCode" autocomplete="one-time-code" placeholder="8 characters from the server log"></div>
+    <div class="field"><label class="label" for="authPw">Password</label><input id="authPw" type="password" autocomplete="current-password"></div>
+    <div class="field" id="authPw2F"><label class="label" for="authPw2">Confirm password</label><input id="authPw2" type="password" autocomplete="new-password"></div>
+    <p class="error" id="authErr" hidden></p>
+    <div class="row"><button class="btn primary" type="submit" id="authGo">Sign in</button><button class="btn" type="button" id="authOut" hidden>Sign out</button></div>
+  </form>
+</div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+  <symbol id="ic-explosion" viewBox="0 0 24 24"><path d="M12 1l2.2 5.6L20 4l-2.6 5.4L23 12l-5.6 2.2L20 20l-5.4-2.6L12 23l-2.2-5.6L4 20l2.6-5.4L1 12l5.6-2.2L4 4l5.4 2.6z"/></symbol>
+  <symbol id="ic-strike" viewBox="0 0 24 24"><path d="M21 3c-3.2.2-6.4 1.7-8.9 4.2L8.4 11l4.6 4.6 3.8-3.7C19.3 9.4 20.8 6.2 21 3zM7.2 12.2L3 13l2.4 2.1zM11.8 16.8L11 21l-2.1-2.4zM6.6 14.6l2.8 2.8-4.6 4.6-2.8-2.8z"/></symbol>
+  <symbol id="ic-shooting" viewBox="0 0 24 24"><path d="M2 7h16.5l1 2H22v3h-5.5l-1.2 2.2h-3.1l-1 4.8H6.6l1.6-6.2H4.2L2 11zm9.6 5h2.2l.6-1.2h-2.5z"/></symbol>
+  <symbol id="ic-stabbing" viewBox="0 0 24 24"><path d="M3 21l6.6-6.6 1.9 1.9L5 22.4zM10.6 13.4L21.4 2.6c.6 3.4-.9 7.4-4 10.5l-2.9 2.9z"/></symbol>
+  <symbol id="ic-kidnap" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M7 10a4.5 4.5 0 1 0 0 9a4.5 4.5 0 1 0 0-9zm0 2.2a2.3 2.3 0 1 1 0 4.6a2.3 2.3 0 1 1 0-4.6zM17 5a4.5 4.5 0 1 0 0 9a4.5 4.5 0 1 0 0-9zm0 2.2a2.3 2.3 0 1 1 0 4.6a2.3 2.3 0 1 1 0-4.6zM10.4 12.2l2.9-1.8 1 1.7-2.9 1.8z"/></symbol>
+  <symbol id="ic-attack" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 2L1 21h22zm-1 7h2v6h-2zm0 8h2v2h-2z"/></symbol>
+  <symbol id="ic-fire" viewBox="0 0 24 24"><path d="M12 1.5c1 4.2 5.5 6 5.5 11.5a5.5 5.5 0 0 1-11 0c0-2.8 1.3-4.4 2.8-5.5.2 2 1.1 3.1 2.4 3.6C11 7.9 10.8 4.8 12 1.5z"/></symbol>
+  <symbol id="ic-crash-air" viewBox="0 0 24 24"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L11 19v-5.5z"/></symbol>
+  <symbol id="ic-crash" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M5 11l1.5-4.5A2 2 0 0 1 8.4 5h7.2a2 2 0 0 1 1.9 1.5L19 11h1a1 1 0 0 1 1 1v5h-2v2h-3v-2H8v2H5v-2H3v-5a1 1 0 0 1 1-1zm2.2 0h9.6l-1-3H8.2zM6.5 13a1.5 1.5 0 1 0 0 3a1.5 1.5 0 0 0 0-3zm11 0a1.5 1.5 0 1 0 0 3a1.5 1.5 0 0 0 0-3z"/></symbol>
+  <symbol id="ic-flood" viewBox="0 0 24 24"><path d="M12 1.5s5 5.4 5 8.6a5 5 0 0 1-10 0C7 6.9 12 1.5 12 1.5zM1 17c2.7 0 2.7-2 5.5-2s2.7 2 5.5 2 2.7-2 5.5-2 2.7 2 5.5 2v2c-2.7 0-2.7-2-5.5-2s-2.7 2-5.5 2-2.7-2-5.5-2-2.8 2-5.5 2z"/></symbol>
+  <symbol id="ic-quake" viewBox="0 0 24 24"><path d="M1 12h4.3l2-5.5 3 12 3-15.5 3 13.4 1.7-4.4H23v2h-3.6l-3.4 8.7L12.9 9l-2.8 13.4L6.9 10.1 6.7 14H1z"/></symbol>
+  <symbol id="ic-storm" viewBox="0 0 24 24"><path d="M13.5 1.5L4 14h6.5l-1.5 8.5L19 10h-6.5z"/></symbol>
+  <symbol id="ic-protest" viewBox="0 0 24 24"><path d="M3 9.5v5h3l7.5 4.5v-14L6 9.5zm12.5-1v7a4 4 0 0 0 0-7zm0-4.5v2.2a7 7 0 0 1 0 11.6V20a9 9 0 0 0 0-16z"/></symbol>
+  <symbol id="ic-outbreak" viewBox="0 0 24 24"><path d="M9 2h6v7h7v6h-7v7H9v-7H2V9h7z"/></symbol>
+  <symbol id="ic-roadworks" viewBox="0 0 24 24"><path d="M10.2 3h3.6l1.2 4.5H9zM8.6 9h6.8l1.1 4H7.5zM7.1 14.5h9.8L18 19h2v2H4v-2h2z"/></symbol>
+  <symbol id="ic-closed" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20zM5 10.5h14v3H5z"/></symbol>
+  <symbol id="ic-jam" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M8 1h8a2 2 0 0 1 2 2v18a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2zm4 2.5a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4zm0 6.3a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4zm0 6.3a2.2 2.2 0 1 0 0 4.4a2.2 2.2 0 1 0 0-4.4z"/></symbol>
+  <symbol id="ic-collapse" viewBox="0 0 24 24"><path fill-rule="evenodd" d="M3 22V9l6-4v4l6-4v17zm14 0V11h4v11zM6 12h2v2H6zm0 4h2v2H6zm5-4h2v2h-2zm0 4h2v2h-2z"/></symbol>
+</defs></svg>
 
 <script>window.echarts = { registerMap: function (n, g) { window.__WORLD = g; } };</script>
 <script src="https://cdn.jsdelivr.net/npm/echarts@4.9.0/map/js/world.js"></script>
@@ -692,6 +764,7 @@ SCAVENGE_DEMO=1 node server/index.js   # offline simulator</div>
 <script src="js/core.js"></script>
 <script src="js/sim.js"></script>
 <script src="js/radio.js"></script>
+<script src="js/conflicts.js"></script>
 <script>
 (() => {
 'use strict';
@@ -714,7 +787,7 @@ const TOPIC_COLORS = { economy: '#ffc53d', politics: '#7d9bff', conflict: '#ff4f
 const TOPICS = Object.fromEntries(Object.entries(C.CATEGORIES).map(([k, v]) => [k, { label: v.label, color: TOPIC_COLORS[k] || '#ccd' }]));
 const NAT = { wildfires: ['#ff6a3d', 'Wildfire'], severeStorms: ['#8fb3ff', 'Severe storm'], volcanoes: ['#ff3d6e', 'Volcano'], floods: ['#36d6ff', 'Flood'], seaLakeIce: ['#d8f3ff', 'Sea & lake ice'], dustHaze: ['#d9b47a', 'Dust & haze'], drought: ['#e0a040', 'Drought'], landslides: ['#b08060', 'Landslide'], snow: ['#eef', 'Snow'], tempExtremes: ['#ff9f43', 'Extreme temperature'], earthquakes: ['#ff4f6d', 'Earthquake'] };
 const WMO = c => c === 0 ? 'Clear' : c <= 3 ? 'Cloudy' : c <= 48 ? 'Fog' : c <= 57 ? 'Drizzle' : c <= 67 ? 'Rain' : c <= 77 ? 'Snow' : c <= 82 ? 'Showers' : c <= 86 ? 'Snow showers' : 'Thunderstorm';
-const tempColor = t => d3.interpolateRgbBasis(['#5aa9ff', '#4ee3ff', '#3ff2a4', '#ffd24d', '#ff8a3d', '#ff4f6d'])(Math.max(0, Math.min(1, (t + 10) / 50)));
+const tempColor = t => d3.interpolateRgbBasis(['#5aa9ff', '#6ccf9a', '#3ff2a4', '#ffd24d', '#ff8a3d', '#ff4f6d'])(Math.max(0, Math.min(1, (t + 10) / 50)));
 const cityOf = name => C.CITIES.find(c => c.city === name);
 
 const DEFAULT_TV = [
@@ -735,7 +808,7 @@ const DEFAULT_TV = [
 const S = {
   mode: 'sim', posts: [], events: { quake: [], nature: [], news: [], weather: [] }, rules: [], alerts: store.get('alerts', []), watch: [],
   arrivals: [], spark: new Array(30).fill(0), seenAlerts: 0,
-  layers: Object.assign({ flights: true, emergency: true, posts: true, heat: true, quake: true, nature: true, news: false, weather: true, night: true, tv: true, sat: false, clouds: true }, store.get('layers', {})),
+  layers: Object.assign({ traffic: true, incidents: true, conflict: true, radar: false, flights: true, emergency: true, posts: true, heat: true, quake: true, nature: true, news: false, weather: true, night: true, tv: true, sat: false, clouds: true }, store.get('layers', {})),
   base: store.get('base', null), lens: '', size: store.get('mapSize', 'M'), pinned: store.get('pinned', true),
   sel: null, sideTab: 'inspect', view: 'overview',
   feed: { plats: new Set(), mood: 'any', country: '', q: '', topic: '', paused: false },
@@ -791,6 +864,17 @@ const API = {
     this.flightFind = q => g('api/flights/find?q=' + encodeURIComponent(q));
     this.flightRoute = (cs, lat, lon) => g(`api/flights/route?callsign=${encodeURIComponent(cs)}&lat=${lat}&lon=${lon}`);
     this.airports = (lat, lon) => g(`api/airports/near?lat=${lat}&lon=${lon}&n=6`);
+    this.conflicts = () => g('api/conflicts');
+    this.traffic = b => g('api/traffic/incidents?' + new URLSearchParams(Object.fromEntries(Object.entries(b).map(([k, v]) => [k, v.toFixed(4)]))));
+    this.radar = () => g('api/weather/radar');
+    this.authStatus = () => g('api/auth/status');
+    this.authSetup = (code, password) => send('api/auth/setup', 'POST', { code, password });
+    this.authLogin = password => send('api/auth/login', 'POST', { password });
+    this.authLogout = () => send('api/auth/logout', 'POST', {});
+    this.accounts = () => g('api/accounts');
+    this.accConnect = body => send('api/accounts/connect', 'POST', body);
+    this.accApp = body => send('api/accounts/app', 'POST', body);
+    this.accRemove = id => send('api/accounts?id=' + encodeURIComponent(id), 'DELETE');
     this.server = true;
     setMode(S.mode === 'live' ? 'Live uplink' : 'Server simulator', S.mode !== 'live');
   },
@@ -878,8 +962,8 @@ function toast(a) {
   const box = $('#toasts');
   if (box.children.length >= (innerWidth < 700 ? 1 : 2)) box.firstElementChild.remove();
   const el = document.createElement('div'); el.className = 'toast'; el.tabIndex = 0;
-  el.innerHTML = `<b>Alert · ${esc(a.rule)}</b><p><span class="mono" style="color:${PLAT[a.post.platform]?.color || '#fff'}">[${esc(PLAT[a.post.platform]?.label || a.post.platform)}]</span> ${highlight(a.post.text.slice(0, 180), a.hits)}</p>`;
-  el.onclick = () => { if (a.post.id) inspectPost(a.post); el.remove(); };
+  el.innerHTML = a.kind ? `<b>${esc(a.kind)} · ${esc(a.rule)}</b><p>${esc(a.text)}</p>` : `<b>Alert · ${esc(a.rule)}</b><p><span class="mono" style="color:${PLAT[a.post.platform]?.color || '#fff'}">[${esc(PLAT[a.post.platform]?.label || a.post.platform)}]</span> ${highlight(a.post.text.slice(0, 180), a.hits)}</p>`;
+  el.onclick = () => { if (a.onclick) a.onclick(); else if (a.post && a.post.id) inspectPost(a.post); el.remove(); };
   box.appendChild(el); setTimeout(() => el.remove(), 5000);
 }
 function highlight(text, terms) {
@@ -909,7 +993,8 @@ function topicChips(el, get, set, multi) {
 function renderWatch() { $('#watchChips').innerHTML = S.watch.map((t, i) => `<span class="chip">${esc(t)}<button data-i="${i}" aria-label="Stop watching ${esc(t)}">×</button></span>`).join(''); }
 $('#watchChips').addEventListener('click', e => { const i = e.target.dataset.i; if (i == null) return; const w = S.watch.slice(); w.splice(+i, 1); API.setWatch(w).then(renderWatch); });
 $('#watchForm').addEventListener('submit', e => { e.preventDefault(); const v = $('#watchInput').value.trim(); if (!v) return; if (!S.watch.includes(v)) API.setWatch([...S.watch, v]).then(() => { renderWatch(); Feed.reset(); }); $('#watchInput').value = ''; });
-function tick() { const d = new Date(); $('#clock').innerHTML = `<b>${d.toISOString().slice(11, 19)}</b> UTC<br>${d.toISOString().slice(0, 10)} · ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} local`; }
+const MON = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+function tick() { const d = new Date(), p = n => String(n).padStart(2, '0'); $('#clock').innerHTML = `<b>${p(d.getUTCDate())}${p(d.getUTCHours())}${p(d.getUTCMinutes())}Z ${MON[d.getUTCMonth()]} ${String(d.getUTCFullYear()).slice(2)}</b> DTG<br>${d.toISOString().slice(11, 19)} UTC · ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })} local`; }
 setInterval(tick, 1000); tick();
 
 // ============================================================ telemetry strip
@@ -926,7 +1011,7 @@ function renderKPIs() {
   const top = C.trends(S.posts, { windowMin: 30, limit: 1 })[0];
   const emg = S.events.emergency || [], emgCrit = emg.filter(e => e.severity === 'critical').length, emgWarn = emg.filter(e => e.severity === 'warning').length;
   const max = Math.max(1, ...S.spark);
-  const spark = `<svg class="spark" viewBox="0 0 120 22" preserveAspectRatio="none"><path d="M0 22 ${S.spark.map((v, i) => `L${i * 120 / 29} ${21 - v / max * 19}`).join(' ')} L120 22Z" fill="rgba(78,227,255,.15)"/><path d="${S.spark.map((v, i) => `${i ? 'L' : 'M'}${i * 120 / 29} ${21 - v / max * 19}`).join(' ')}" fill="none" stroke="#4ee3ff" stroke-width="1.2"/><circle cx="120" cy="${21 - S.spark[29] / max * 19}" r="2" fill="#4ee3ff"/></svg>`;
+  const spark = `<svg class="spark" viewBox="0 0 120 22" preserveAspectRatio="none"><path d="M0 22 ${S.spark.map((v, i) => `L${i * 120 / 29} ${21 - v / max * 19}`).join(' ')} L120 22Z" fill="rgba(108,207,154,.15)"/><path d="${S.spark.map((v, i) => `${i ? 'L' : 'M'}${i * 120 / 29} ${21 - v / max * 19}`).join(' ')}" fill="none" stroke="#6ccf9a" stroke-width="1.2"/><circle cx="120" cy="${21 - S.spark[29] / max * 19}" r="2" fill="#6ccf9a"/></svg>`;
   $('#kpis').innerHTML = [
     ['Signals / min', fmt(S.arrivals.length), '', spark], ['Emergencies', fmt(emgCrit + emgWarn), `<small>${emgCrit} critical</small>`, '', emgCrit ? 'neg' : emgWarn ? 'warn' : ''],
     ['Global mood', (avg >= 0 ? '+' : '') + avg.toFixed(2), '', '', avg > 0.08 ? 'pos' : avg < -0.08 ? 'neg' : ''],
@@ -1009,12 +1094,12 @@ const BASEMAPS = {
   rendered: { label: 'Rendered Earth (works offline)', short: 'Satellite', rendered: true, attrib: 'Rendered locally · not real imagery' }
 };
 const PLANE = 'M0 -5 L1 -1.5 L5 0.5 L5 1.4 L1 0.6 L0.8 3.6 L2 4.6 L2 5.2 L0 4.6 L-2 5.2 L-2 4.6 L-0.8 3.6 L-1 0.6 L-5 1.4 L-5 0.5 L-1 -1.5 Z';
-const altColor = a => a == null ? '#9aa8b8' : a <= 0 ? '#8a94a3' : d3.interpolateRgbBasis(['#3ff2a4', '#4ee3ff', '#7d9bff', '#d18cff'])(Math.min(1, a / 40000));
+const altColor = a => a == null ? '#9aa8b8' : a <= 0 ? '#8a94a3' : d3.interpolateRgbBasis(['#3ff2a4', '#6ccf9a', '#7d9bff', '#d18cff'])(Math.min(1, a / 40000));
 
 // ============================================================ MAP
-const MapView = (() => {
+const MapView = window.MapView = (() => {
   const W = 1000, WORLD = 1000; let H = 500;   // viewBox follows the container's shape; the Mercator world is a 1000×1000 square
-  let svg, g, gTiles, proj, path, zoom, k = 1, tz = 0, gEmg, gFl, gTrail, countries = [], gCountries, gPosts, gQuake, gNature, gNews, gWx, gNight, gPing, gTV, img, gClouds, ready = false, tileErrs = 0, moveCb = null, moveT = null;
+  let gTrafTiles, gTraf, gRadar, gConf, gInc, radar = null, svg, g, gTiles, proj, path, zoom, k = 1, tz = 0, gEmg, gFl, gTrail, countries = [], gCountries, gPosts, gQuake, gNature, gNews, gWx, gNight, gPing, gTV, img, gClouds, ready = false, tileErrs = 0, moveCb = null, moveT = null;
   const tip = $('#tip');
   const mk = () => Math.min(Math.sqrt(k), 4) / k; // marker scale: grows a little with zoom, then stays a fixed screen size
   function decode(geo) {
@@ -1050,10 +1135,11 @@ const MapView = (() => {
     img = g.append('image').attr('x', 0).attr('y', 0).attr('width', WORLD).attr('height', WORLD).attr('preserveAspectRatio', 'none').style('display', 'none');
     g.append('path').datum(d3.geoGraticule10()).attr('class', 'grat').attr('d', path);
     gCountries = g.append('g');
+    gRadar = g.append('g').attr('class', 'radar').attr('opacity', 0.72); gTrafTiles = g.append('g').attr('class', 'traffic'); gTraf = g.append('g'); gConf = g.append('g');
     gClouds = g.append('g').style('display', 'none');
     gNight = g.append('path').attr('class', 'night');
     gWx = g.append('g').attr('class', 'wx'); gTV = g.append('g').attr('class', 'tvp');
-    gNews = g.append('g'); gNature = g.append('g'); gQuake = g.append('g'); gPosts = g.append('g'); gTrail = g.append('path').attr('class', 'trail'); gFl = g.append('g').attr('class', 'fl'); gEmg = g.append('g'); gPing = g.append('g');
+    gNews = g.append('g'); gNature = g.append('g'); gQuake = g.append('g'); gPosts = g.append('g'); gInc = g.append('g').attr('class', 'inc'); gTrail = g.append('path').attr('class', 'trail'); gFl = g.append('g').attr('class', 'fl'); gEmg = g.append('g'); gPing = g.append('g');
     try { if (window.__WORLD) countries = decode(window.__WORLD).features; } catch (e) { console.warn('map geometry', e); countries = []; }
     if (countries.length) {
       countries.forEach(f => { f.properties.key = NAME_FIX[f.properties.name] || f.properties.name; });
@@ -1062,7 +1148,7 @@ const MapView = (() => {
         .on('click', (e, d) => select({ kind: 'country', key: d.properties.key }));
     } else $('#hudTL').textContent = 'MAP GEOMETRY OFFLINE · SIGNALS ONLY';
     zoom = d3.zoom().translateExtent([[0, 0], [WORLD, WORLD]]).on('zoom', e => {
-      g.attr('transform', e.transform); drawTiles(e.transform);
+      g.attr('transform', e.transform); drawTiles(e.transform); drawRadar(e.transform); drawTrafficTiles(e.transform);
       const nk = e.transform.k; if (Math.abs(nk - k) / k > 0.04) { k = nk; render(); drawFlights(); }
       clearTimeout(moveT); moveT = setTimeout(() => moveCb && moveCb(), 700);
     });
@@ -1082,8 +1168,8 @@ const MapView = (() => {
   function hideTip() { tip.hidden = true; }
   function countryTip(name) { const ps = S.posts.filter(p => p.country === name && Date.now() - p.ts < 3600000 && inTopic(p, S.lens)); const avg = ps.length ? ps.reduce((a, p) => a + p.sentiment, 0) / ps.length : 0; return `<b>${esc(name)}</b><br><span class="mono">${ps.length} posts${S.lens ? ' · ' + esc(TOPICS[S.lens].label) : ''} · last hour · mood ${avg >= 0 ? '+' : ''}${avg.toFixed(2)}</span><br><span style="color:var(--dim)">Click to inspect</span>`; }
 
-  const LAYERS = [['flights', 'Live flights (ADS-B)', '#e8f1ff'], ['emergency', 'Emergencies & SOS', '#ff3b3b'], ['posts', 'Social signals', '#4ee3ff'], ['heat', 'Activity heat', '#2b7fa0'], ['quake', 'Earthquakes (USGS)', '#ff4f6d'], ['nature', 'Natural events (NASA)', '#ff6a3d'],
-    ['news', 'News hotspots (GDELT)', '#ffa94d'], ['weather', 'Weather (Open-Meteo)', '#3ff2a4'], ['tv', 'Live TV channels', '#ff4f6a'], ['night', 'Day / night', '#334']];
+  const LAYERS = [['traffic', 'Traffic & road incidents', '#f0b43c'], ['incidents', 'Incidents from news', '#ff5a52'], ['conflict', 'Conflict zones', '#ff8a3d'], ['radar', 'Weather radar (live)', '#4fb8ff'], ['flights', 'Live flights (ADS-B)', '#e8f1ff'], ['emergency', 'Emergencies & SOS', '#ff3b3b'], ['posts', 'Social signals', '#6ccf9a'], ['heat', 'Activity heat', '#2b7fa0'], ['quake', 'Earthquakes (USGS)', '#ff4f6d'], ['nature', 'Natural events (NASA)', '#ff6a3d'],
+    ['news', 'News hotspots (GDELT)', '#f0b43c'], ['weather', 'Weather (Open-Meteo)', '#3ff2a4'], ['tv', 'Live TV channels', '#ff4f6a'], ['night', 'Day / night', '#334']];
   function renderLayersPanel() {
     $('#layersBody').innerHTML = `<div class="label sub" style="margin-top:0">Base map</div><select id="baseSel" aria-label="Base map">${Object.entries(BASEMAPS).map(([v, b]) => `<option value="${v}" ${v === S.base ? 'selected' : ''}>${esc(b.label)}</option>`).join('')}</select>
       <label><input type="checkbox" data-layer="clouds" ${S.layers.clouds ? 'checked' : ''}><i style="background:#eef"></i>Cloud cover (rendered)</label>
@@ -1092,7 +1178,7 @@ const MapView = (() => {
     $('#layersBody').onchange = e => {
       if (e.target.id === 'baseSel') return setBase(e.target.value);
       if (e.target.id === 'lens') { S.lens = e.target.value; renderSidePosts(); }
-      else { S.layers[e.target.dataset.layer] = e.target.checked; store.set('layers', S.layers); if (e.target.dataset.layer === 'flights') Flights.refresh(); }
+      else { S.layers[e.target.dataset.layer] = e.target.checked; store.set('layers', S.layers); if (e.target.dataset.layer === 'flights') Flights.refresh(); if (e.target.dataset.layer === 'radar') Weather.toggle(); if (e.target.dataset.layer === 'conflict') Conflict.load(); if (e.target.dataset.layer === 'traffic') Traffic.refresh(true); }
       syncToolbar(); render(); drawFlights(); renderEvents();
     };
   }
@@ -1149,7 +1235,7 @@ const MapView = (() => {
       const counts = new Map();
       if (S.layers.heat) lensed.forEach(p => { if (p.country && now - p.ts < 3600000) counts.set(p.country, (counts.get(p.country) || 0) + 1); });
       const max = Math.max(1, ...counts.values());
-      const col = d3.interpolateRgb('#0f1d2e', S.lens ? TOPICS[S.lens].color : '#1f9cc4');
+      const col = d3.interpolateRgb('#171d20', S.lens ? TOPICS[S.lens].color : '#3e8f69');
       gCountries.selectAll('path').style('fill', d => { const c = counts.get(d.properties.key); return c ? col(Math.sqrt(c / max) * (S.lens ? 0.75 : 1)) : null; })
         .style('fill-opacity', d => tiles && counts.get(d.properties.key) ? 0.4 : null)
         .classed('sel', d => S.sel && S.sel.kind === 'country' && S.sel.key === d.properties.key);
@@ -1161,7 +1247,7 @@ const MapView = (() => {
     gPosts.selectAll('circle').data(pts, d => d.id).join('circle').attr('class', 'pt')
       .attr('cx', d => proj([d.lon, d.lat])[0]).attr('cy', d => proj([d.lon, d.lat])[1]).attr('r', d => r(d.id === selId ? 4 : 1.9))
       .attr('fill', d => PLAT[d.platform]?.color || '#fff').attr('fill-opacity', d => Math.max(0.3, 1 - (now - d.ts) / 3600000))
-      .attr('stroke', d => d.id === selId ? '#ffa94d' : 'none').attr('stroke-width', r(1))
+      .attr('stroke', d => d.id === selId ? '#f0b43c' : 'none').attr('stroke-width', r(1))
       .on('mousemove', (e, d) => showTip(e, `<b>${esc(PLAT[d.platform]?.label)}</b> · ${esc(d.city || d.country || '')}<br>${esc(d.text.slice(0, 140))}<br><span style="color:var(--dim)">Click to read the post</span>`)).on('mouseleave', hideTip)
       .on('click', (e, d) => { e.stopPropagation(); inspectPost(d, true); });
     const qg = gQuake.selectAll('g').data(S.layers.quake ? S.events.quake : [], d => d.id).join(enter => { const e = enter.append('g').attr('class', 'pt'); e.append('circle').attr('class', 'core'); e.append('circle').attr('class', 'quake-ring'); return e; });
@@ -1179,7 +1265,7 @@ const MapView = (() => {
       .on('click', (e, d) => select({ kind: 'event', item: d }));
     gNews.selectAll('rect').data(S.layers.news ? S.events.news : [], d => d.id).join('rect').attr('class', 'pt')
       .each(function (d) { const sz = r(2 + Math.sqrt(d.count || 1) * 0.7), [x, y] = proj([d.lon, d.lat]); d3.select(this).attr('x', x - sz / 2).attr('y', y - sz / 2).attr('width', sz).attr('height', sz); })
-      .attr('fill', 'rgba(255,169,77,.18)').attr('stroke', '#ffa94d').attr('stroke-width', r(0.5))
+      .attr('fill', 'rgba(240,180,60,.18)').attr('stroke', '#f0b43c').attr('stroke-width', r(0.5))
       .on('mousemove', (e, d) => showTip(e, `<b>${esc(d.title)}</b><br><span class="mono">${d.count || ''} reports · last 24h</span>`)).on('mouseleave', hideTip)
       .on('click', (e, d) => select({ kind: 'event', item: d }));
     let wx = S.layers.weather ? S.events.weather : [];
@@ -1195,10 +1281,10 @@ const MapView = (() => {
     eg.attr('transform', d => `translate(${proj([d.lon, d.lat])}) scale(${1.1 * s})`)
       .on('mousemove', (e, d) => showTip(e, `<b style="color:${d.severity === 'critical' ? 'var(--crit)' : 'var(--plasma)'}">${esc(d.title)}</b><br><span class="mono">${esc(d.source || '')} · ${ago(d.ts)} ago</span>`)).on('mouseleave', hideTip)
       .on('click', (e, d) => { e.stopPropagation(); select({ kind: 'incident', item: d }); });
-    eg.select('.quake-ring').attr('r', 4).attr('stroke-width', 0.8).style('stroke', d => d.severity === 'critical' ? '#ff3b3b' : '#ffa94d').style('display', d => d.severity === 'critical' ? null : 'none');
+    eg.select('.quake-ring').attr('r', 4).attr('stroke-width', 0.8).style('stroke', d => d.severity === 'critical' ? '#ff3b3b' : '#f0b43c').style('display', d => d.severity === 'critical' ? null : 'none');
     eg.select('path').attr('d', d => d.kind === 'aircraft' ? PLANE : d.kind === 'disaster' ? HEX : d.kind === 'weather' ? TRI : 'M-1 -4 H1 V-1 H4 V1 H1 V4 H-1 V1 H-4 V-1 H-1 Z')
       .attr('transform', d => d.kind === 'aircraft' && d.track != null ? `rotate(${d.track})` : null)
-      .attr('fill', d => d.kind === 'aircraft' ? '#fff' : d.severity === 'critical' ? '#ff3b3b' : '#ffa94d').attr('stroke', d => d.kind === 'aircraft' ? (d.severity === 'critical' ? '#ff3b3b' : '#ffa94d') : '#1a0308').attr('stroke-width', d => d.kind === 'aircraft' ? 1.1 : 0.6);
+      .attr('fill', d => d.kind === 'aircraft' ? '#fff' : d.severity === 'critical' ? '#ff3b3b' : '#f0b43c').attr('stroke', d => d.kind === 'aircraft' ? (d.severity === 'critical' ? '#ff3b3b' : '#f0b43c') : '#1a0308').attr('stroke-width', d => d.kind === 'aircraft' ? 1.1 : 0.6);
     const seenCity = {};
     const tvs = S.layers.tv ? S.tv.list.map(ch => { const c = cityOf(ch.city); if (!c) return null; const n = seenCity[c.city] = (seenCity[c.city] || 0) + 1; return { ch, lon: c.lon + (n - 1) * 1.6, lat: c.lat - 1.8 }; }).filter(Boolean) : [];
     const tg = gTV.selectAll('g').data(tvs, d => d.ch.id).join(enter => { const e = enter.append('g').attr('class', 'pt'); e.append('rect'); e.append('path'); return e; });
@@ -1209,9 +1295,99 @@ const MapView = (() => {
     tg.select('path').attr('d', 'M-1.2 -1.6 L2 0 L-1.2 1.6 Z').attr('fill', '#ff4f6a');
   }
 
+  // ---- weather radar: tiles in world coordinates so they sit above the land but under every marker
+  function setRadar(r) { radar = r; gRadar.selectAll('*').remove(); drawRadar(d3.zoomTransform(svg.node())); }
+  function drawRadar(t) {
+    if (!gRadar) return;
+    if (!S.layers.radar || !radar) { gRadar.style('display', 'none'); return; }
+    gRadar.style('display', null);
+    if (radar.image) { gRadar.selectAll('image').data([radar.image]).join('image').attr('href', d => d).attr('x', radar.offset || 0).attr('y', 0).attr('width', WORLD).attr('height', WORLD).attr('preserveAspectRatio', 'none'); return; }
+    const z = Math.min(radar.maxZoom || 7, tz), n = 2 ** z, ts = WORLD / n;
+    const x0 = -t.x / t.k, x1 = (W - t.x) / t.k, y0 = -t.y / t.k, y1 = (H - t.y) / t.k;
+    const list = [];
+    for (let i = Math.max(0, Math.floor(x0 / ts)); i <= Math.min(n - 1, Math.floor(x1 / ts)); i++) for (let j = Math.max(0, Math.floor(y0 / ts)); j <= Math.min(n - 1, Math.floor(y1 / ts)); j++) list.push({ key: `${radar.tpl}|${z}/${i}/${j}`, i, j, href: radar.tpl.replace('{z}', z).replace('{x}', i).replace('{y}', j) });
+    if (list.length > 120) return;
+    gRadar.selectAll('image').data(list, d => d.key).join(en => en.append('image').attr('preserveAspectRatio', 'none').attr('href', d => d.href))
+      .attr('x', d => d.i * ts).attr('y', d => d.j * ts).attr('width', ts * 1.002).attr('height', ts * 1.002);
+  }
+
+  // ---- traffic: congestion tiles (server proxy) in world coordinates, jams as lines, road incidents as icons
+  function drawTrafficTiles(t) {
+    if (!gTrafTiles) return;
+    const on = S.layers.traffic && Traffic.tilesOn();
+    if (!on) { gTrafTiles.selectAll('*').remove(); return; }
+    const z = Math.min(22, tz), n = 2 ** z, ts = WORLD / n, style = (BASEMAPS[S.base] || {}).tiles && S.base !== 'night' ? 'relative0' : 'relative0-dark';
+    const x0 = -t.x / t.k, x1 = (W - t.x) / t.k, y0 = -t.y / t.k, y1 = (H - t.y) / t.k, list = [];
+    if (z < 6) { gTrafTiles.selectAll('*').remove(); return; }
+    for (let i = Math.max(0, Math.floor(x0 / ts)); i <= Math.min(n - 1, Math.floor(x1 / ts)); i++) for (let j = Math.max(0, Math.floor(y0 / ts)); j <= Math.min(n - 1, Math.floor(y1 / ts)); j++) list.push({ key: `${style}/${z}/${i}/${j}`, i, j });
+    if (list.length > 120) return;
+    gTrafTiles.selectAll('image').data(list, d => d.key).join(en => en.append('image').attr('preserveAspectRatio', 'none').attr('href', d => `api/traffic/flow/${d.key}.png`))
+      .attr('x', d => d.i * ts).attr('y', d => d.j * ts).attr('width', ts * 1.002).attr('height', ts * 1.002);
+  }
+  const TR_ICON = { 1: 'crash', 6: 'jam', 7: 'roadworks', 8: 'closed', 9: 'roadworks', 11: 'flood', 14: 'crash' };
+  const TR_COL = m => m >= 4 ? '#9b1c1c' : m >= 3 ? '#ff5a4f' : m >= 2 ? '#f0b43c' : '#e6d36a';
+  function drawTraffic() {
+    const d = S.layers.traffic ? Traffic.data() : null, s = mk();
+    const flow = d && d.flow ? d.flow : [];
+    gTraf.selectAll('path.flow').data(flow, f => f.road).join('path').attr('class', 'flow').attr('d', f => path({ type: 'LineString', coordinates: f.line })).attr('stroke', f => f.speed < 0.25 ? '#ff5a4f' : f.speed < 0.6 ? '#f0b43c' : '#6ccf9a');
+    const jams = d ? d.jams.filter(j => j.line && j.line.length > 1) : [];
+    gTraf.selectAll('path.jam').data(jams, j => j.id).join('path').attr('class', 'jam').attr('d', j => path({ type: 'LineString', coordinates: j.line }))
+      .attr('stroke', j => TR_COL(j.magnitude)).attr('stroke-width', j => j.heavy ? 6 : 4).attr('stroke-opacity', 0.9)
+      .on('mousemove', (e, j) => showTip(e, `<b style="color:${TR_COL(j.magnitude)}">${esc(j.severity)} traffic · ${esc(j.road || j.from || '')}</b><br>${j.delay ? Math.round(j.delay / 60) + ' min delay · ' : ''}${(j.length / 1000).toFixed(1)} km${j.cause ? `<br>Cause: ${esc(j.cause.label)}` : ''}`)).on('mouseleave', hideTip)
+      .on('click', (e, j) => { e.stopPropagation(); select({ kind: 'traffic', item: j }); });
+    const inc = d ? d.incidents.filter(i => i.cat !== 6) : [];
+    gTraf.selectAll('circle.floodarea').data(inc.filter(i => i.cat === 11), i => i.id).join('circle').attr('class', 'floodarea').attr('cx', i => proj([i.lon, i.lat])[0]).attr('cy', i => proj([i.lon, i.lat])[1]).attr('r', 9 * s);
+    const ig = gTraf.selectAll('g.tri').data(inc, i => i.id).join(en => { const e = en.append('g').attr('class', 'pt tri'); e.append('rect'); e.append('use'); return e; });
+    ig.attr('transform', i => `translate(${proj([i.lon, i.lat])}) scale(${s * 0.5})`)
+      .on('mousemove', (e, i) => showTip(e, `<b>${esc(i.kind)}</b> · ${esc(i.road || i.from || '')}<br>${esc(i.description || '')}`)).on('mouseleave', hideTip)
+      .on('click', (e, i) => { e.stopPropagation(); select({ kind: 'traffic', item: i }); });
+    ig.select('rect').attr('x', -6.5).attr('y', -6.5).attr('width', 13).attr('height', 13).attr('rx', 2).attr('fill', i => i.cat === 11 ? '#0d2a3d' : '#2a2008').attr('stroke', i => i.cat === 11 ? '#4fb8ff' : '#f0b43c').attr('stroke-width', 1.1);
+    ig.select('use').attr('href', i => '#ic-' + (TR_ICON[i.cat] || 'attack')).attr('x', -4.5).attr('y', -4.5).attr('width', 9).attr('height', 9).attr('fill', i => i.cat === 11 ? '#4fb8ff' : '#f0b43c');
+    // notification callouts for heavy jams with an identified cause
+    const heavy = jams.filter(j => j.heavy && j.cause);
+    const cg = gTraf.selectAll('g.callout').data(heavy, j => j.id).join(en => { const e = en.append('g').attr('class', 'callout pt'); e.append('rect'); e.append('text').attr('class', 'h'); e.append('text').attr('class', 'b'); return e; });
+    const cs = s * 0.34, placed = [], pos = new Map();
+    heavy.map(j => [j, proj(j.line[Math.floor(j.line.length / 2)])]).sort((a, b) => a[1][1] - b[1][1]).forEach(([j, p]) => {
+      let y = p[1];
+      for (let tries = 0; tries < 8 && placed.some(q => Math.abs(q[0] - p[0]) < 230 * cs && Math.abs(q[1] - y) < 27 * cs); tries++) y -= 27 * cs;
+      placed.push([p[0], y]); pos.set(j.id, [p[0], y]);
+    });
+    cg.attr('transform', j => `translate(${pos.get(j.id)}) scale(${cs})`).on('click', (e, j) => { e.stopPropagation(); select({ kind: 'traffic', item: j }); });
+    cg.select('text.h').attr('x', 6).attr('y', -12).text(j => `Heavy traffic · ${j.road || j.from || ''}`);
+    cg.select('text.b').attr('x', 6).attr('y', -2).text(j => `Cause: ${j.cause.label}`);
+    cg.select('rect').each(function (j) { const g = this.parentNode, w = Math.max(g.querySelector('text.h').getComputedTextLength(), g.querySelector('text.b').getComputedTextLength()) + 10; d3.select(this).attr('x', 1).attr('y', -21).attr('width', w).attr('height', 24); });
+  }
+
+  // ---- conflict zones (reference areas, intensity from news) and incident icons
+  function drawConflict() {
+    const zones = S.layers.conflict ? Conflict.zones() : [];
+    const s = mk();
+    gConf.selectAll('path.czone').data(zones, d => d.id).join('path').attr('class', 'czone')
+      .attr('d', d => path(d3.geoCircle().center([d.lon, d.lat]).radius(d.km / 111.2).precision(4)()))
+      .attr('fill', d => CF.LEVEL[d.level].color).attr('fill-opacity', d => 0.08 + Math.min(0.14, (d.reports7d || 0) / 1500)).attr('stroke', d => CF.LEVEL[d.level].color)
+      .on('mousemove', (e, d) => showTip(e, `<b style="color:${CF.LEVEL[d.level].color}">${esc(d.name)}</b> · ${esc(d.country)}<br>${esc(d.summary)}<br><span class="mono">${(d.reports7d || 0).toLocaleString()} conflict reports · 7 days</span>`)).on('mouseleave', hideTip)
+      .on('click', (e, d) => { e.stopPropagation(); select({ kind: 'conflict', item: d }); });
+    gConf.selectAll('text.clabel').data(k >= 2.5 ? zones : [], d => d.id).join('text').attr('class', 'clabel')
+      .attr('transform', d => `translate(${proj([d.lon, d.lat])}) scale(${s / Math.min(Math.sqrt(k), 4) * 1.6})`).attr('text-anchor', 'middle').attr('fill', d => CF.LEVEL[d.level].color).text(d => d.name);
+  }
+  function drawIncidents() {
+    const list = S.layers.incidents ? Incidents.clusters() : [];
+    const s = mk() * 0.9;
+    gInc.selectAll('path.floodarea').data(list.filter(c => c.type === 'flood'), c => c.key).join('path').attr('class', 'floodarea')
+      .attr('d', c => path(d3.geoCircle().center([c.lon, c.lat]).radius(Math.min(0.35, 0.08 + c.count * 0.02)).precision(8)()));
+    const ig = gInc.selectAll('g').data(list, d => d.key).join(en => { const e = en.append('g').attr('class', 'pt'); e.append('circle'); e.append('use'); e.append('text'); return e; });
+    ig.attr('transform', d => `translate(${proj([d.lon, d.lat])}) scale(${s})`)
+      .on('mousemove', (e, d) => showTip(e, `<b style="color:${Incidents.color(d.type)}">${esc(d.label)}</b> · ${esc(d.place)}${d.count > 1 ? ` · ${d.count} reports` : ''}<br>${esc(d.posts[0].text.slice(0, 150))}<br><span style="color:var(--dim)">${ago(d.posts[0].ts)} ago · click for reports</span>`)).on('mouseleave', hideTip)
+      .on('click', (e, d) => { e.stopPropagation(); select({ kind: 'incidents', item: d }); });
+    ig.select('circle').attr('r', 7).attr('fill', '#090c0e').attr('stroke', d => Incidents.color(d.type)).attr('stroke-width', 1.3);
+    ig.select('use').attr('href', d => '#ic-' + d.type).attr('x', -4.6).attr('y', -4.6).attr('width', 9.2).attr('height', 9.2).attr('fill', d => Incidents.color(d.type));
+    ig.select('text').attr('x', 6).attr('y', -5).attr('fill', '#fff').text(d => d.count > 1 ? d.count : '');
+  }
+
   // ---- flights (redrawn every second with dead reckoning between position reports)
   function drawFlights() {
     if (!ready) return;
+    drawConflict(); drawIncidents(); drawTraffic();
     const list = S.layers.flights ? Flights.visible() : [];
     const s = mk() * 0.42, sel = Flights.selected(), labels = Flights.labels() || k >= 40;
     const fg = gFl.selectAll('g').data(list, d => d.hex).join(enter => { const e = enter.append('g').attr('class', 'pt plane'); e.append('path').attr('d', PLANE); e.append('text'); return e; });
@@ -1220,8 +1396,8 @@ const MapView = (() => {
       .on('click', (e, d) => { e.stopPropagation(); Flights.select(d.hex); });
     fg.select('path').attr('transform', d => `rotate(${d.track || 0})`)
       .attr('fill', d => /^7[567]00$/.test(d.squawk || '') || d.emergency ? '#ff3b3b' : altColor(d.alt))
-      .attr('stroke', d => d.hex === sel ? '#ffa94d' : '#02060c').attr('stroke-width', d => d.hex === sel ? 1.4 : 0.6);
-    fg.select('text').attr('x', 8).attr('y', 3.5).style('font', '600 12px var(--f-mono)').attr('fill', d => d.hex === sel ? '#ffa94d' : '#e8f1ff').attr('stroke', '#02060c').attr('stroke-width', 2).style('paint-order', 'stroke')
+      .attr('stroke', d => d.hex === sel ? '#f0b43c' : '#02060c').attr('stroke-width', d => d.hex === sel ? 1.4 : 0.6);
+    fg.select('text').attr('x', 8).attr('y', 3.5).style('font', '600 12px var(--f-mono)').attr('fill', d => d.hex === sel ? '#f0b43c' : '#e8f1ff').attr('stroke', '#02060c').attr('stroke-width', 2).style('paint-order', 'stroke')
       .text(d => labels || d.hex === sel ? (d.flight || d.hex) : '');
     const tr = sel && S.layers.flights ? Flights.trail(sel) : [];
     gTrail.attr('d', tr.length > 1 ? 'M' + tr.map(p => proj(p).join(',')).join('L') : null);
@@ -1237,7 +1413,7 @@ const MapView = (() => {
   }
   function center() { const t = d3.zoomTransform(svg.node()); const ll = proj.invert(t.invert([W / 2, H / 2])); return { lon: ll[0], lat: ll[1] }; }
   function bbox() { const t = d3.zoomTransform(svg.node()); const a = proj.invert(t.invert([0, 0])), b = proj.invert(t.invert([W, H])); return { lomin: Math.max(-180, a[0]), lamax: Math.min(85, a[1]), lomax: Math.min(180, b[0]), lamin: Math.max(-85, b[1]) }; }
-  return { init, render, focus, panTo, ping, center, bbox, drawFlights, setBase, zoomLevel: () => tz, onMove: f => (moveCb = f) };
+  return { init, render, focus, panTo, ping, center, bbox, drawFlights, setBase, setRadar, drawTrafficTiles: () => drawTrafficTiles(d3.zoomTransform(svg.node())), drawRadar: () => drawRadar(d3.zoomTransform(svg.node())), zoomLevel: () => tz, onMove: f => (moveCb = f) };
 })();
 
 // ============================================================ map toolbar: satellite · fullscreen · size · pin
@@ -1263,6 +1439,8 @@ $('#tbFull').onclick = async () => {
   syncToolbar();
 };
 document.addEventListener('fullscreenchange', syncToolbar);
+$('#zfull').onclick = () => $('#tbFull').click();
+document.addEventListener('keydown', e => { if ((e.key === 'f' || e.key === 'F') && !e.ctrlKey && !e.metaKey && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) $('#tbFull').click(); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && $('#deck').classList.contains('fs')) { $('#deck').classList.remove('fs'); syncToolbar(); } });
 $('#layersBtn').onclick = () => { const b = $('#layersBody'); b.hidden = !b.hidden; $('#layersBtn').setAttribute('aria-expanded', !b.hidden); $('#layersBtn span').textContent = b.hidden ? '▸' : '▾'; };
 // On narrow screens the side panel leaves the docked deck and sits at the top of the page content.
@@ -1352,6 +1530,32 @@ function renderDetail() {
       <dt>Severity</dt><dd><span class="tag ${e.severity === 'info' ? 'neu' : 'neg'}">${esc(e.severity)}</span>${e.simulated ? ' <span class="tag sim">simulated</span>' : ''}</dd>
       ${e.url ? `<dt>Source</dt><dd><a href="${esc(e.url)}" target="_blank" rel="noopener">Open report ↗</a></dd>` : ''}</dl>
       <div class="label sub">Posts nearby</div>${postRows(S.posts.filter(p => p.lat != null && Math.abs(p.lat - e.lat) < 4 && Math.abs(p.lon - e.lon) < 4).slice(-10).reverse())}`;
+  } else if (s.kind === 'traffic') {
+    const t = s.item, isJam = t.cat === 6 || t.line && t.line.length > 1 && t.magnitude, col = t.cat === 11 ? '#4fb8ff' : t.magnitude >= 3 ? 'var(--crit)' : 'var(--plasma)';
+    const gm = `https://www.google.com/maps/@${t.lat.toFixed(5)},${t.lon.toFixed(5)},15z/data=!5m1!1e1`;
+    el.innerHTML = `<header><h2 style="color:${col}">${isJam ? esc(t.severity + ' traffic') : esc(t.kind)}</h2>${close}</header>
+      <p class="big" style="font-size:1.3rem">${esc(t.road || t.from || 'Road')}${t.to ? ' → ' + esc(t.to) : ''}</p>
+      <dl>${t.delay ? `<dt>Delay</dt><dd class="mono">${Math.round(t.delay / 60)} min</dd>` : ''}${t.length ? `<dt>Length</dt><dd class="mono">${(t.length / 1000).toFixed(1)} km</dd>` : ''}
+      ${t.description ? `<dt>Report</dt><dd>${esc(t.description)}</dd>` : ''}
+      ${t.cause ? `<dt>Cause</dt><dd><b style="color:${col}">${esc(t.cause.label)}</b><br>${esc(t.cause.detail || '')}<br><span class="mono" style="color:var(--dim)">${t.cause.source === 'news' ? 'matched from local news, not confirmed by the traffic feed' : 'from the traffic incident feed'}</span></dd>` : isJam ? '<dt>Cause</dt><dd style="color:var(--dim)">No incident reported nearby; likely volume (rush hour).</dd>' : ''}
+      ${t.start ? `<dt>Since</dt><dd class="mono">${new Date(t.start).toISOString().slice(11, 16)} UTC</dd>` : ''}<dt>Source</dt><dd>${t.simulated ? 'Simulated' : 'TomTom Traffic'}</dd></dl>
+      <div class="row" style="margin-top:12px"><a class="btn sm primary" href="${gm}" target="_blank" rel="noopener">Google Maps traffic here ↗</a><button class="btn sm" id="trZoom">Zoom to road</button></div>`;
+    $('#trZoom').onclick = () => MapView.focus(t.lon, t.lat, 2048);
+  } else if (s.kind === 'conflict') {
+    const z = s.item, L = CF.LEVEL[z.level];
+    el.innerHTML = `<header><h2 style="color:${L.color}">Conflict zone</h2>${close}</header><p class="big" style="color:${L.color};font-size:1.3rem">${esc(z.name)}</p>
+      <dl><dt>Country</dt><dd>${esc(z.country)}</dd><dt>Status</dt><dd><span class="chipst" style="color:${L.color}">${esc(L.label)}</span></dd><dt>Since</dt><dd class="mono">${z.since}</dd>
+      <dt>Summary</dt><dd>${esc(z.summary)}</dd><dt>News reports</dt><dd class="mono">${(z.reports7d || 0).toLocaleString()} in 7 days${z.simulated ? ' (simulated)' : ''}</dd>
+      ${(z.places || []).length ? `<dt>Hotspots</dt><dd>${z.places.map(p => `${esc(p.name)} <span class="mono" style="color:var(--dim)">${p.count}</span>`).join('<br>')}</dd>` : ''}</dl>
+      <p class="note">Zones are a reference list (${esc(CF.asOf)}); intensity comes from news reports. Verify with <a href="https://acleddata.com/conflict-index/" target="_blank" rel="noopener">ACLED</a> or <a href="https://www.crisisgroup.org/crisiswatch" target="_blank" rel="noopener">CrisisWatch</a>.</p>
+      <div class="label sub">Posts and reports nearby</div>${postRows(S.posts.filter(p => p.lat != null && RAD.nm(p.lat, p.lon, z.lat, z.lon) * 1.852 < z.km).slice(-12).reverse())}`;
+  } else if (s.kind === 'incidents') {
+    const c = s.item, col = Incidents.color(c.type);
+    el.innerHTML = `<header><h2 style="color:${col}">${esc(c.label)}</h2>${close}</header>
+      <p class="big" style="font-size:1.3rem"><svg width="22" height="22" style="vertical-align:-4px;fill:${col}"><use href="#ic-${c.type}"/></svg> ${esc(c.place)}</p>
+      <p class="mono" style="color:var(--dim);margin:0 0 10px;font-size:12px">${c.count} report${c.count > 1 ? 's' : ''} · latest ${ago(c.posts[0].ts)} ago</p>
+      <p class="note" style="margin-top:0">Detected automatically from the wording of news and posts and placed at the city or country they name. Open the reports to verify.</p>
+      ${postRows(c.posts.slice(0, 20))}`;
   } else if (s.kind === 'flight') {
     Flights.detail(el, s.hex);
   } else if (s.kind === 'incident') {
@@ -1387,6 +1591,7 @@ function renderSidePosts() {
 }
 function renderEvents() {
   const items = [];
+  if (S.layers.traffic) items.push(...Traffic.alerts().map(j => ({ layer: 'traffic', title: `${j.severity} traffic on ${j.road || j.from}: ${j.cause ? j.cause.label : 'cause unknown'}`, severity: j.magnitude >= 3 ? 'warning' : 'info', ts: j.seenAt || Date.now(), lat: j.lat, lon: j.lon, item: j })));
   if (S.layers.emergency) items.push(...(S.events.emergency || []).map(e => Object.assign({}, e, { layer: 'incident' })));
   if (S.layers.quake) items.push(...S.events.quake);
   if (S.layers.nature) items.push(...S.events.nature);
@@ -1395,7 +1600,7 @@ function renderEvents() {
   const rank = { critical: 0, warning: 1, info: 2 };
   items.sort((a, b) => rank[a.severity] - rank[b.severity] || b.ts - a.ts);
   $('#p-events').innerHTML = `<header><h2>Event log</h2><span class="label">${items.length} tracked</span></header>` + (items.slice(0, 80).map((e, i) => `<button class="ev" data-i="${i}"><span class="dot sev-${e.severity}"></span><span class="t">${esc(e.title)}</span><span class="m">${ago(e.ts)}</span></button>`).join('') || '<p class="empty">No events on the active layers.</p>');
-  $('#p-events').onclick = ev => { const b = ev.target.closest('.ev'); if (!b) return; const e = items[+b.dataset.i]; select({ kind: e.layer === 'weather' ? 'weather' : e.layer === 'incident' ? 'incident' : 'event', item: e }); MapView.focus(e.lon, e.lat, 4); };
+  $('#p-events').onclick = ev => { const b = ev.target.closest('.ev'); if (!b) return; const e = items[+b.dataset.i]; if (e.layer === 'traffic') { select({ kind: 'traffic', item: e.item }); MapView.focus(e.lon, e.lat, 1024); return; } select({ kind: e.layer === 'weather' ? 'weather' : e.layer === 'incident' ? 'incident' : 'event', item: e }); MapView.focus(e.lon, e.lat, 4); };
 }
 
 // ============================================================ OVERVIEW
@@ -1980,7 +2185,7 @@ const Flights = (() => {
   // Dead reckoning: move each aircraft along its track at its ground speed since the last report (max 60 s).
   function pos(a) {
     if (a.ground || !a.gs || a.track == null || !a._t) return a;
-    const dt = Math.min(60, (Date.now() - a._t) / 1000 + (a.seen || 0)), d = a.gs * dt / 3600 / 60, t = a.track * Math.PI / 180;
+    const dt = Math.min(a._snap ? 1200 : 60, (Date.now() - a._t) / 1000 + (a.seen || 0)), d = a.gs * dt / 3600 / 60, t = a.track * Math.PI / 180;
     return { lat: a.lat + d * Math.cos(t), lon: a.lon + d * Math.sin(t) / Math.max(0.2, Math.cos(a.lat * Math.PI / 180)) };
   }
   function pass(a) {
@@ -1991,8 +2196,11 @@ const Flights = (() => {
     return f.alt === 'all' || (f.alt === 'ground' && a.ground) || (f.alt === 'low' && !a.ground && alt < 10000) || (f.alt === 'mid' && alt >= 10000 && alt < 30000) || (f.alt === 'high' && alt >= 30000);
   }
   const visible = () => F.list.filter(pass);
-  async function fetchNow() {
+  let moved = true;
+  async function fetchNow(force) {
     if (!S.layers.flights || busy) return;
+    if (!force && !moved && F.info && F.info.snapshot && Date.now() - (F.info._got || 0) < 60000) return; // world snapshot: no need to poll fast
+    moved = false;
     busy = true;
     try {
       let res;
@@ -2000,13 +2208,13 @@ const Flights = (() => {
       else res = { aircraft: API.simInst.flights(), source: 'simulator' };
       const now = Date.now();
       for (const a of res.aircraft) {
-        a._t = now;
+        a._t = now; a._snap = !!res.snapshot;
         const tr = F.trails.get(a.hex) || []; const lp = tr[tr.length - 1];
         if (!lp || lp[0] !== a.lon || lp[1] !== a.lat) tr.push([a.lon, a.lat, now]);
         while (tr.length > 80) tr.shift(); F.trails.set(a.hex, tr);
       }
       for (const [h, tr] of F.trails) if (now - tr[tr.length - 1][2] > 15 * 60000) F.trails.delete(h);
-      F.list = res.aircraft; F.byHex = new Map(res.aircraft.map(a => [a.hex, a])); F.info = res;
+      F.list = res.aircraft; F.byHex = new Map(res.aircraft.map(a => [a.hex, a])); F.info = res; res._got = now;
       if (F.sel && F.byHex.has(F.sel)) { F.selObj = F.byHex.get(F.sel); if (F.follow) MapView.panTo(F.selObj.lon, F.selObj.lat); }
       else if (F.sel && F.selObj && !F.list.includes(F.selObj)) F.list.push(F.selObj); // keep the tracked aircraft even when it leaves the view
     } catch (e) { F.info = { aircraft: F.list, error: e.message }; }
@@ -2017,13 +2225,13 @@ const Flights = (() => {
   }
   function hud() {
     const i = F.info, el = $('#hudFl'); if (!el) return;
-    el.textContent = !S.layers.flights ? '' : !i ? '✈ LOADING FLIGHTS…' : i.tooWide ? '✈ ZOOM IN TO LOAD LIVE FLIGHTS' : i.error ? '✈ FLIGHT DATA UNAVAILABLE' : `✈ ${visible().length} AIRCRAFT · ${(i.source || '').toUpperCase()}${i.partial ? ' · LOADING MORE' : ''}`;
+    el.textContent = !S.layers.flights ? '' : !i ? '✈ LOADING FLIGHTS…' : i.tooWide ? '✈ ZOOM IN TO LOAD LIVE FLIGHTS' : i.snapshot ? `✈ ${visible().length} AIRCRAFT · WORLD SNAPSHOT ${ago(i.at || Date.now())} OLD · ZOOM IN FOR LIVE` : i.error ? '✈ FLIGHT DATA UNAVAILABLE' : `✈ ${visible().length} AIRCRAFT · ${(i.source || '').toUpperCase()}${i.partial ? ' · LOADING MORE' : ''}`;
   }
   function start() {
     clearInterval(timer);
     timer = setInterval(fetchNow, API.server ? (S.mode === 'live' ? 8000 : 4000) : 2000);
     setInterval(() => { if (S.layers.flights && !document.hidden) MapView.drawFlights(); }, 1000);
-    MapView.onMove(() => { if (API.server) fetchNow(); });
+    MapView.onMove(() => { moved = true; if (API.server) fetchNow(); if (window.Traffic && API.traffic) Traffic.refresh(true); });
     fetchNow();
   }
   function select(hex) {
@@ -2151,6 +2359,221 @@ const Flights = (() => {
     labels: () => F.labels, detail: (el, hex) => { el.innerHTML = `<header><h2>Aircraft</h2><button class="btn sm" id="dClose">Clear</button></header>` + card(F.byHex.get(hex) || F.selObj); bindCard(el); } };
 })();
 
+// ============================================================ CONFLICT ZONES · WEATHER RADAR · INCIDENTS
+const CF = window.ScavengeConflicts;
+const Conflict = (() => {
+  let zones = CF.ZONES.map(z => Object.assign({}, z)), loaded = 0;
+  async function load() {
+    if (!S.layers.conflict || Date.now() - loaded < 25 * 60000) return; loaded = Date.now();
+    if (API.conflicts) { try { const r = await API.conflicts(); zones = r.zones; } catch {} }
+    else zones = CF.ZONES.map(z => Object.assign({}, z, { reports7d: Math.round((z.level === 'war' ? 300 : z.level === 'high' ? 120 : 40) * (0.5 + Math.random())), simulated: true }));
+    MapView.drawFlights();
+  }
+  return { load, zones: () => zones };
+})();
+const Weather = (() => {
+  let frames = [], idx = 0, timer = null, simImg = null;
+  function label() { const f = frames[idx]; if (!f) return; $('#radarTime').textContent = f.sim ? 'Simulated radar' : `${new Date(f.time).toISOString().slice(11, 16)} UTC${f.forecast ? ' forecast' : ''} · ${Math.round((Date.now() - f.time) / 60000)} min ago`.replace('-', '+'); }
+  function show(i) { idx = i; const f = frames[i]; if (!f) return; $('#radarSlider').value = i; label(); MapView.setRadar(f.tpl ? { tpl: f.tpl, maxZoom: 7 } : { image: f.image, offset: f.offset }); }
+  function simRadar() {
+    if (simImg) return simImg;
+    const N = 512, c = document.createElement('canvas'); c.width = N; c.height = N; const ctx = c.getContext('2d'), im = ctx.createImageData(N, N), d = im.data;
+    const h = (i, j) => { const v = Math.sin(i * 127.1 + j * 311.7) * 43758.5453; return v - Math.floor(v); };
+    const n2 = (x, y) => { const i = Math.floor(x), j = Math.floor(y), fx = x - i, fy = y - j, u = fx * fx * (3 - 2 * fx), v = fy * fy * (3 - 2 * fy); return h(i, j) + (h(i + 1, j) - h(i, j)) * u + (h(i, j + 1) - h(i, j)) * v + (h(i, j) - h(i + 1, j) - h(i, j + 1) + h(i + 1, j + 1)) * u * v; };
+    const pal = [[90, 200, 120], [60, 170, 90], [240, 220, 60], [245, 150, 40], [230, 60, 50], [190, 50, 160]];
+    for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+      const lat = (2 * Math.atan(Math.exp(Math.PI * (1 - 2 * y / N))) - Math.PI / 2) * 180 / Math.PI, band = Math.max(Math.exp(-(((lat - 5) / 12) ** 2)), 0.7 * Math.exp(-(((Math.abs(lat) - 50) / 10) ** 2)));
+      const v = (n2(x / 18, y / 18) * 0.6 + n2(x / 7, y / 7) * 0.4) * band, k = (y * N + x) * 4;
+      if (v > 0.42) { const p = pal[Math.min(5, Math.floor((v - 0.42) * 22))]; d[k] = p[0]; d[k + 1] = p[1]; d[k + 2] = p[2]; d[k + 3] = 190; }
+    }
+    ctx.putImageData(im, 0, 0); return (simImg = c.toDataURL('image/png'));
+  }
+  async function load() {
+    if (API.radar) {
+      try { const r = await API.radar(); frames = r.frames.map(f => ({ time: f.time, forecast: f.forecast, tpl: `${r.host}${f.path}/256/{z}/{x}/{y}/2/1_1.png` })); }
+      catch (e) { $('#radarTime').textContent = 'Radar unavailable'; frames = []; return; }
+    } else frames = Array.from({ length: 12 }, (_, i) => ({ sim: true, image: simRadar(), offset: i * 3 }));
+    $('#radarSlider').max = Math.max(0, frames.length - 1);
+    show(frames.findIndex(f => f.forecast) > 0 ? frames.findIndex(f => f.forecast) - 1 : frames.length - 1);
+  }
+  function toggle() {
+    $('#radarBar').hidden = !S.layers.radar;
+    if (S.layers.radar) load(); else { stop(); MapView.setRadar(null); }
+  }
+  function stop() { clearInterval(timer); timer = null; $('#radarPlay').textContent = '▶'; }
+  $('#radarPlay').onclick = () => { if (timer) return stop(); $('#radarPlay').textContent = '❚❚'; timer = setInterval(() => show((idx + 1) % frames.length), 700); };
+  $('#radarSlider').oninput = e => { stop(); show(+e.target.value); };
+  setInterval(() => { if (S.layers.radar && API.radar && !timer) load(); }, 5 * 60000);
+  return { toggle };
+})();
+const Incidents = (() => {
+  const COLORS = { strike: '#ff5a52', explosion: '#ff5a52', shooting: '#ff3d7f', stabbing: '#ff6f91', kidnap: '#d58cff', attack: '#ff5a52', fire: '#ff8a3d', 'crash-air': '#f2b134', crash: '#f2b134', flood: '#4fb8ff', quake: '#c98b5e', storm: '#9fb3ff', protest: '#e6c84e', outbreak: '#6fd3a0', collapse: '#c8c8c8' };
+  let cache = [], at = 0;
+  function clusters() {
+    if (Date.now() - at < 3000) return cache; at = Date.now();
+    const m = new Map(), now = Date.now();
+    for (let i = S.posts.length - 1; i >= 0; i--) {
+      const p = S.posts[i]; if (now - p.ts > 24 * 3600000) continue;
+      if (!p.incident || p.lat == null || !(p.city || p.country)) continue;
+      const place = p.city ? `${p.city}, ${p.country}` : p.country, key = p.incident.type + '|' + place;
+      const c = m.get(key) || { key, type: p.incident.type, label: p.incident.label, place, lat: p.lat, lon: p.lon, count: 0, posts: [] };
+      c.count++; if (c.posts.length < 30) c.posts.push(p); m.set(key, c);
+    }
+    return (cache = [...m.values()].sort((a, b) => a.count - b.count));
+  }
+  return { clusters, color: t => COLORS[t] || '#e8f1ff' };
+})();
+
+// ============================================================ TRAFFIC
+const Traffic = window.Traffic = (() => {
+  let data = null, last = 0, configured = null, seen = new Set(store.get('trSeen', [])), alerts = [];
+  const tooFar = () => MapView.zoomLevel() < 11;
+  async function refresh(force) {
+    if (!S.layers.traffic) { data = null; MapView.drawFlights(); MapView.drawTrafficTiles(); return; }
+    if (!force && Date.now() - last < 110000) return; last = Date.now();
+    let r;
+    if (API.traffic) {
+      if (tooFar()) { data = { incidents: [], jams: [], tooWide: true }; hud(); MapView.drawFlights(); return; }
+      try { r = await API.traffic(MapView.bbox()); } catch (e) { r = { incidents: [], jams: [], error: e.message }; }
+      configured = r.configured !== false;
+    } else { r = API.simInst.traffic(); configured = true; }
+    data = r;
+    for (const j of r.jams || []) {
+      if (!j.heavy || !j.cause) continue;
+      const key = j.road + '|' + j.cause.label;
+      if (!alerts.find(a => a.id === j.id)) alerts.unshift(Object.assign({ seenAt: Date.now() }, j));
+      if (!seen.has(key)) { seen.add(key); toast({ kind: 'Traffic', rule: `Heavy · ${j.road || j.from}`, text: `Cause: ${j.cause.label}. ${j.cause.detail || ''}${j.simulated ? ' (simulated)' : ''}`, onclick: () => { select({ kind: 'traffic', item: j }); MapView.focus(j.lon, j.lat, 1024); } }); }
+    }
+    alerts = alerts.slice(0, 30); store.set('trSeen', [...seen].slice(-200));
+    hud(); MapView.drawFlights(); MapView.drawTrafficTiles(); if (S.sideTab === 'events') renderEvents();
+  }
+  function hud() {
+    const el = $('#hudTr'); if (!el) return;
+    el.textContent = !S.layers.traffic ? '' : API.traffic && configured === false ? '▲ TRAFFIC: ADD A FREE TOMTOM KEY IN ACCOUNTS' : data && data.tooWide ? '▲ ZOOM TO CITY LEVEL FOR TRAFFIC' : data ? `▲ TRAFFIC · ${(data.jams || []).filter(j => j.heavy).length} HEAVY · ${(data.incidents || []).filter(i => i.cat !== 6).length} INCIDENTS${data.simulated ? ' · SIM' : ''}` : '';
+  }
+  setInterval(() => refresh(), 120000);
+  MapView.onMoveExtra = () => refresh(true);
+  return { refresh, data: () => data, tilesOn: () => !!API.traffic && configured !== false && !tooFar(), alerts: () => alerts };
+})();
+
+// ============================================================ OPERATOR SIGN-IN
+const Auth = (() => {
+  let st = { setup: true, signedIn: false, sim: false };
+  async function refresh() {
+    if (!API.authStatus) st = { setup: true, signedIn: true, sim: true };
+    else try { st = await API.authStatus(); } catch {}
+    const b = $('#authBtn'); b.hidden = !!st.sim; b.textContent = st.sim ? 'Simulation' : st.signedIn ? 'Operator ✓' : st.setup ? 'Sign in' : 'Set up sign-in'; b.classList.toggle('on', !!st.signedIn && !st.sim);
+    return st;
+  }
+  function open() {
+    if (st.sim) { toast({ rule: 'Test site', post: { platform: 'x', text: 'There is no operator sign-in on the test site. On your server, Sign in protects settings and connected accounts.' }, hits: [] }); return; }
+    const setup = !st.setup;
+    $('#authTitle').textContent = st.signedIn ? 'Signed in as operator' : setup ? 'Set up operator sign-in' : 'Operator sign-in';
+    $('#authNote').textContent = st.signedIn ? 'You can change settings and manage connected accounts. Sign out on shared computers.'
+      : setup ? 'First run: enter the one-time setup code printed in the server log when Scavenge started, then choose a password (10+ characters).' : 'Sign in to change settings, alert rules and connected accounts.';
+    $('#authCodeF').hidden = !setup || st.signedIn; $('#authPw2F').hidden = !setup || st.signedIn; $('#authPw').parentElement.hidden = st.signedIn;
+    $('#authGo').hidden = st.signedIn; $('#authGo').textContent = setup ? 'Create password' : 'Sign in'; $('#authOut').hidden = !st.signedIn;
+    $('#authErr').hidden = true; $('#authForm').reset(); $('#authModal').hidden = false;
+    setTimeout(() => (setup ? $('#authCode') : $('#authPw')).focus(), 30);
+  }
+  const close = () => { $('#authModal').hidden = true; };
+  $('#authBtn').onclick = open; $('#authClose').onclick = close;
+  $('#authModal').onclick = e => { if (e.target.id === 'authModal') close(); };
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('#authModal').hidden) close(); });
+  $('#authOut').onclick = async () => { await API.authLogout().catch(() => {}); await refresh(); close(); Accounts.render(); };
+  $('#authForm').onsubmit = async e => {
+    e.preventDefault(); const err = $('#authErr'); err.hidden = true;
+    try {
+      if (!st.setup) { if ($('#authPw').value !== $('#authPw2').value) throw new Error('The passwords do not match.'); await API.authSetup($('#authCode').value, $('#authPw').value); }
+      else await API.authLogin($('#authPw').value);
+      await refresh(); close(); Accounts.render();
+      toast({ rule: 'Signed in', post: { platform: 'x', text: 'Operator access granted on this browser for 30 days.' }, hits: [] });
+    } catch (x) { err.textContent = x.message; err.hidden = false; }
+  };
+  return { refresh, open, state: () => st };
+})();
+
+// ============================================================ CONNECTED ACCOUNTS
+const Accounts = (() => {
+  const SIMPLAT = () => ['x', 'reddit', 'mastodon', 'bluesky', 'youtube', 'facebook', 'linkedin'];
+  const COLOR = { x: PLAT.x.color, reddit: PLAT.reddit.color, mastodon: PLAT.mastodon.color, bluesky: PLAT.bluesky.color, youtube: PLAT.youtube.color, facebook: PLAT.facebook.color, linkedin: PLAT.linkedin.color };
+  let data = null;
+  const simData = () => {
+    const sim = store.get('simAccounts', []);
+    const info = { x: ['X (Twitter)', 'oauth'], reddit: ['Reddit', 'oauth'], mastodon: ['Mastodon', 'mastodon'], bluesky: ['Bluesky', 'password'], youtube: ['YouTube', 'oauth'], facebook: ['Facebook & Instagram', 'oauth'], linkedin: ['LinkedIn', 'oauth'] };
+    return { platforms: SIMPLAT().map(id => ({ id, label: info[id][0], kind: info[id][1], reads: 'On your server: monitors this platform through your account.', needs: 'On your server you sign in on the platform’s own login page.', needsApp: false, appConfigured: true })), accounts: sim, sim: true };
+  };
+  async function load() { data = API.accounts ? await API.accounts().catch(e => ({ error: e.message, platforms: [], accounts: [] })) : simData(); }
+  function copyBtn(text) { return `<span class="copyline"><code>${esc(text)}</code><button class="btn sm" type="button" data-copy="${esc(text)}">Copy</button></span>`; }
+  function card(p) {
+    const st = Auth.state(), op = st.signedIn, mine = data.accounts.filter(a => a.platform === p.id);
+    const status = mine.length ? ['Connected', 'var(--ok)'] : p.needsApp && !p.appConfigured ? ['App needed', 'var(--plasma)'] : ['Not connected', 'var(--dim)'];
+    let action = '';
+    if (data.sim) action = `<button class="btn primary" data-sim="${p.id}">Connect (simulated)</button>`;
+    else if (!op) action = '<button class="btn" data-signin="1">Sign in to connect</button>';
+    else if (p.kind === 'mastodon') action = `<form class="row" data-mast="1"><input name="instance" placeholder="mastodon.social" aria-label="Mastodon instance" style="flex:1;min-width:0;background:var(--void);border:1px solid var(--line-2);padding:7px 9px;font:400 12px var(--f-mono)"><button class="btn primary">Sign in with Mastodon</button></form>`;
+    else if (p.kind === 'password') action = `<form class="grid" data-bsky="1" style="gap:8px"><input name="handle" placeholder="you.bsky.social" autocomplete="username" aria-label="Bluesky handle" style="background:var(--void);border:1px solid var(--line-2);padding:7px 9px;font:400 12px var(--f-mono)"><input name="appPassword" type="password" autocomplete="off" placeholder="App password xxxx-xxxx-xxxx-xxxx" aria-label="Bluesky app password" style="background:var(--void);border:1px solid var(--line-2);padding:7px 9px;font:400 12px var(--f-mono)"><div class="row"><button class="btn primary">Connect Bluesky</button><a class="btn sm" href="${esc(p.portal)}" target="_blank" rel="noopener">Create an app password ↗</a></div></form>`;
+    else {
+      const setupForm = `<details ${p.appConfigured ? '' : 'open'}><summary>${p.appConfigured ? `App set up (${esc(p.appFromEnv ? 'from server settings' : p.appClientId || '')}) · change` : `Set up your ${esc(p.label)} app (one time)`}</summary>
+        <ol><li>Open the <a href="${esc(p.portal)}" target="_blank" rel="noopener">${esc(p.label)} developer portal ↗</a> and create an app.</li><li>Add this as its redirect / callback URL:<br>${copyBtn(p.redirect)}</li><li>Paste the app’s client ID and client secret here.</li></ol>
+        <form class="grid" data-app="${p.id}" style="gap:8px"><input name="id" placeholder="Client ID / App ID" autocomplete="off" aria-label="Client ID" style="background:var(--hull);border:1px solid var(--line-2);padding:7px 9px;font:400 12px var(--f-mono)"><input name="secret" type="password" placeholder="Client secret" autocomplete="off" aria-label="Client secret" style="background:var(--hull);border:1px solid var(--line-2);padding:7px 9px;font:400 12px var(--f-mono)"><div class="row"><button class="btn">Save app keys</button>${p.appConfigured && !p.appFromEnv ? '<button class="btn sm" type="button" data-clearapp="' + p.id + '">Remove app keys</button>' : ''}</div></form></details>`;
+      action = (p.appConfigured ? `<button class="btn primary" data-oauth="${p.id}">Sign in with ${esc(p.label.split(' ')[0])}</button>` : '') + setupForm;
+    }
+    return `<div class="panel" data-plat="${p.id}"><header><h2 style="color:${COLOR[p.id] || 'var(--fg)'}">${esc(p.label)}</h2><span class="chipst" style="color:${status[1]}">${status[0]}${mine.length > 1 ? ' · ' + mine.length : ''}</span></header>
+      <p class="note" style="margin:0"><b style="color:var(--fg)">Reads:</b> ${esc(p.reads)}</p><p class="note" style="margin:0"><b style="color:var(--fg)">Needs:</b> ${esc(p.needs)}</p>
+      ${mine.map(a => `<div class="who"><b>${esc(a.handle || a.name || a.platform)}</b>${op || data.sim ? `<button class="btn sm" data-rm="${esc(a.id)}">Disconnect</button>` : '<span></span>'}<span class="m">${a.connectedAt ? 'connected ' + ago(a.connectedAt) + ' ago' : ''}${a.lastUsed ? ' · used ' + ago(a.lastUsed) + ' ago' : ''}${a.status === 'error' ? ` · <span style="color:var(--crit)">${esc(a.error || 'error')}</span>` : ''}${a.simulated ? ' · simulated' : ''}</span></div>`).join('')}
+      ${action}<p class="error" data-err hidden></p></div>`;
+  }
+  async function render() {
+    if (S.view !== 'accounts') return;
+    await Auth.refresh(); await load();
+    const st = Auth.state();
+    $('#accSum').textContent = `${data.accounts.length} connected`;
+    $('#accIntro').innerHTML = data.sim ? 'Test site: connections here are simulated and nothing is sent anywhere. On your server, each button opens the platform’s own sign-in page; Scavenge stores the resulting read-only token encrypted and monitors trends through it.'
+      : 'Sign in to each platform on its own login page. Scavenge never sees your platform passwords: it receives a read-only access token, stores it encrypted on your server, and uses it to monitor your watch terms and alert rules. Connected accounts take priority over anonymous access.';
+    $('#accGate').innerHTML = data.sim || st.signedIn ? '' : `<div class="warnbox"><b>${st.setup ? 'Operator sign-in required' : 'Set up operator sign-in first'}</b><br>${st.setup ? 'Only the operator can connect or remove accounts.' : 'Your server printed a one-time setup code in its log. Use it to create the operator password before connecting accounts.'} <button class="btn sm" data-signin="1">${st.setup ? 'Sign in' : 'Set up'}</button></div>`;
+    const tk = (data.keys || {}).tomtom || {};
+    const keysPanel = `<div class="panel" data-plat="tomtom"><header><h2 style="color:var(--plasma)">Traffic data · TomTom</h2><span class="chipst" style="color:${tk.configured ? 'var(--ok)' : 'var(--plasma)'}">${tk.configured ? 'Key set' : 'Key needed'}</span></header>
+      <p class="note" style="margin:0"><b style="color:var(--fg)">Powers:</b> the traffic layer: live congestion, accidents, closures, road works and flooded roads, and the cause shown for heavy jams.</p>
+      <p class="note" style="margin:0"><b style="color:var(--fg)">Needs:</b> a free API key from the <a href="https://developer.tomtom.com/" target="_blank" rel="noopener">TomTom developer portal ↗</a> (free daily allowance). Google’s traffic layer only works inside Google Maps, so each traffic alert links there instead.</p>
+      ${data.sim ? '' : !st.signedIn ? '<button class="btn" data-signin="1">Sign in to add the key</button>' : `<form class="row" data-app="tomtom"><input name="id" type="password" autocomplete="off" placeholder="${tk.configured ? 'Replace key (' + esc(tk.hint || '') + ')' : 'Paste TomTom API key'}" aria-label="TomTom API key" style="flex:1;min-width:0;background:var(--void);border:1px solid var(--line-2);padding:7px 9px;font:400 12px var(--f-mono)"><button class="btn primary">Save key</button>${tk.configured && !tk.fromEnv ? '<button class="btn sm" type="button" data-clearapp="tomtom">Remove</button>' : ''}</form>`}
+      <p class="error" data-err hidden></p></div>`;
+    $('#accGrid').innerHTML = keysPanel + data.platforms.map(card).join('') + `<div class="panel"><header><h2>Not available</h2></header><p class="note" style="margin:0">TikTok, Telegram and WhatsApp offer no API that lets a third-party tool monitor posts or trends, so they can’t be connected. Public Telegram channels and TikTok topics still surface through the world news and social sources.</p></div>`;
+  }
+  async function act(fn, card) {
+    const err = card && card.querySelector('[data-err]'); if (err) err.hidden = true;
+    try { await fn(); } catch (x) { if (err) { err.textContent = x.message; err.hidden = false; } else toast({ rule: 'Accounts', post: { platform: 'x', text: x.message }, hits: [] }); }
+  }
+  function init() {
+    $('#v-accounts').addEventListener('click', e => {
+      const t = e.target, card = t.closest('[data-plat]');
+      if (t.closest('[data-signin]')) return Auth.open();
+      if (t.dataset.copy) { navigator.clipboard.writeText(t.dataset.copy).then(() => (t.textContent = 'Copied'), () => { const r = document.createRange(); r.selectNodeContents(t.previousElementSibling); getSelection().removeAllRanges(); getSelection().addRange(r); }); return; }
+      if (t.dataset.sim) { const n = store.get('simAccounts', []); n.push({ id: 'sim' + Date.now(), platform: t.dataset.sim, handle: '@demo_' + t.dataset.sim, connectedAt: Date.now(), lastUsed: Date.now(), status: 'ok', simulated: true }); store.set('simAccounts', n); return render(); }
+      if (t.dataset.oauth) return act(async () => { const r = await API.accConnect({ platform: t.dataset.oauth }); location.href = r.url; }, card);
+      if (t.dataset.clearapp) return act(async () => { await API.accApp({ platform: t.dataset.clearapp, clear: true }); render(); }, card);
+      if (t.dataset.rm) {
+        if (!t.dataset.armed) { t.dataset.armed = 1; t.textContent = 'Confirm'; setTimeout(() => { if (t.isConnected) { delete t.dataset.armed; t.textContent = 'Disconnect'; } }, 3000); return; }
+        if (data.sim) { store.set('simAccounts', store.get('simAccounts', []).filter(a => a.id !== t.dataset.rm)); return render(); }
+        return act(async () => { const r = await API.accRemove(t.dataset.rm); toast({ rule: 'Disconnected', post: { platform: 'x', text: r.note }, hits: [] }); render(); }, card);
+      }
+    });
+    $('#v-accounts').addEventListener('submit', e => {
+      e.preventDefault(); const f = e.target, card = f.closest('[data-plat]'), v = Object.fromEntries(new FormData(f));
+      if (f.dataset.app) return act(async () => { await API.accApp(Object.assign({ platform: f.dataset.app }, v)); render(); if (f.dataset.app === 'tomtom') Traffic.refresh(true); }, card);
+      if (f.dataset.mast) return act(async () => { const r = await API.accConnect({ platform: 'mastodon', instance: v.instance }); location.href = r.url; }, card);
+      if (f.dataset.bsky) return act(async () => { await API.accConnect({ platform: 'bluesky', handle: v.handle, appPassword: v.appPassword }); f.reset(); toast({ rule: 'Connected', post: { platform: 'bluesky', text: 'Bluesky connected. Monitoring starts on the next sweep.' }, hits: [] }); render(); }, card);
+    });
+    // Coming back from a platform's sign-in page
+    const q = new URLSearchParams(location.search);
+    if (q.has('connected') || q.has('account_error')) {
+      setTimeout(() => toast(q.has('connected') ? { rule: 'Account connected', post: { platform: q.get('connected') in PLAT ? q.get('connected') : 'x', text: `${q.get('handle') || q.get('connected')} is connected. Monitoring starts on the next sweep.` }, hits: [] } : { rule: 'Account not connected', post: { platform: 'x', text: q.get('account_error') }, hits: [] }), 800);
+      try { history.replaceState(null, '', location.pathname + location.hash); } catch {}
+    }
+  }
+  return { init, render };
+})();
+
 // ============================================================ SOURCES
 const SIM_SOURCES = [['x', 'X (Twitter)', false, 'X_BEARER_TOKEN — X API plan with recent-search access'], ['facebook', 'Facebook / Instagram', false, 'FB_ACCESS_TOKEN + FB_PAGE_IDS — Meta Graph API, public pages'],
   ['linkedin', 'LinkedIn', false, 'LINKEDIN_TOKEN + LINKEDIN_ORG_URNS — organisation pages (no public search API)'], ['reddit', 'Reddit', true, null], ['mastodon', 'Mastodon', true, null],
@@ -2168,7 +2591,7 @@ async function renderSources() {
 }
 
 // ============================================================ routing & render loop
-const VIEWS = ['overview', 'feeds', 'alerts', 'radio', 'flights', 'analytics', 'tv', 'sources'];
+const VIEWS = ['overview', 'feeds', 'alerts', 'radio', 'flights', 'analytics', 'tv', 'accounts', 'sources'];
 function route() {
   const v = VIEWS.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'overview';
   S.view = v;
@@ -2181,6 +2604,7 @@ function route() {
   if (v === 'tv') TV.render();
   if (v === 'radio') Radio.show();
   if (v === 'flights') Flights.show();
+  if (v === 'accounts') Accounts.render();
   if (v === 'sources') renderSources();
   if (S.pinned && scrollY > 0) scrollTo({ top: 0 });
   updateBadge();
@@ -2208,7 +2632,7 @@ setInterval(() => Radio.renderIncidents(), 20000);
   countryOptions($('#fCountry'), 'All countries');
   renderWatch(); Feed.init(); initAlerts(); initAnalytics(); TV.init(); Radio.init();
   if (!S.base) S.base = API.server ? 'streets' : 'vector';
-  MapView.init(); placeSide(); syncToolbar(); renderDetail(); Flights.init();
+  MapView.init(); placeSide(); syncToolbar(); renderDetail(); Flights.init(); Accounts.init(); Auth.refresh(); Conflict.load(); Weather.toggle(); setTimeout(() => Traffic.refresh(true), 1200);
   window.addEventListener('hashchange', route); route();
   loop();
   $('#boot').classList.add('done'); setTimeout(() => $('#boot').remove(), 600);

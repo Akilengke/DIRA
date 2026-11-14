@@ -80,6 +80,18 @@
       'Cholera cases rising in {city}, hospitals ask residents to boil water',
       'Free vaccination drive in {city} this week, great turnout so far',
       'Doctors in {country} threaten strike over unpaid salaries']},
+    { k: 'incidents', w: 6, where: ['Ethiopia', 'United States', 'Kenya', 'Nigeria', 'India', 'United Kingdom', 'Brazil', 'Pakistan', 'France', 'South Africa'], t: [
+      'Explosion reported near a fuel depot in {city}, police cordon off the area',
+      'Mass shooting in {city} leaves several people injured, gunman at large',
+      'Fire guts a busy market in {city}, traders count losses',
+      'Protesters march through central {city} over rising living costs, police fire tear gas',
+      'Bus crash on the highway outside {city} injures 20 passengers',
+      'Flash floods sweep through low-lying estates in {city} after overnight rain',
+      'Building collapse in {city}: rescuers search the rubble for survivors',
+      'Knife attack at a train station in {city}, suspect arrested',
+      'Cholera outbreak confirmed in {city}, health officials urge caution',
+      'Gunmen kidnap travellers on a road near {city}',
+      'Small plane crash near the airport in {city}, emergency crews on scene']},
     { k: 'storm', w: 3, where: ['Philippines', 'Vietnam', 'Japan', 'United States', 'Mexico'], t: [
       'Typhoon warning raised for {city}, schools closed tomorrow',
       'Storm surge flooding the coast near {city}, rescue teams deployed',
@@ -101,7 +113,7 @@
       const key = wpick(live); const topic = TOPICS.find(t => t.k === key);
       const country = pick(topic.where);
       const city = pick(byCountry[country] || core.CITIES);
-      const platform = wpick(PLATFORMS);
+      const platform = topic.k === 'incidents' && R() < 0.6 ? 'news' : wpick(PLATFORMS);
       let text = pick(topic.t).replace(/#KenyaRains/g, '#' + country.replace(/[^A-Za-z]/g, '') + 'Rains').replace(/\{city\}/g, city.city).replace(/\{country\}/g, country);
       if (R() < 0.5 && !text.includes(city.city)) text += ' — ' + city.city;
       const author = platform === 'news' ? pick(['dailywire.example', 'globedesk.example', 'eastafricanow.example', 'metrotimes.example']) : platform === 'reddit' ? 'u/' + pick(HANDLES) + Math.floor(R() * 900) : '@' + pick(HANDLES) + pick(SUFFIX);
@@ -230,7 +242,38 @@
         text, lat: airport.lat, lon: airport.lon, ts: Date.now(), duration: +(2 + text.length / 16).toFixed(1), distress: null, simulated: true, flight: f && f.hex };
     }
 
-    return { post, burst, backfill, events, incidents, transmission, flights, atc };
+    // ---- traffic around Nairobi (simulated) ----
+    const ROADS = {
+      'Mombasa Road': [[36.8250, -1.3045], [36.8400, -1.3150], [36.8600, -1.3230], [36.8800, -1.3330], [36.9000, -1.3400]],
+      'Thika Road': [[36.8290, -1.2780], [36.8550, -1.2550], [36.8780, -1.2310], [36.8900, -1.2180], [36.9300, -1.1950]],
+      'Waiyaki Way': [[36.8100, -1.2680], [36.7900, -1.2620], [36.7700, -1.2560], [36.7450, -1.2550]],
+      'Uhuru Highway': [[36.8150, -1.2700], [36.8180, -1.2850], [36.8240, -1.2990]],
+      'Ngong Road': [[36.8140, -1.2990], [36.7900, -1.3000], [36.7650, -1.3020]],
+      'Jogoo Road': [[36.8400, -1.2900], [36.8600, -1.2900], [36.8800, -1.2880]],
+      'Outer Ring Road': [[36.8800, -1.2300], [36.8850, -1.2700], [36.8900, -1.3000]]
+    };
+    function traffic() {
+      const t = Math.floor(Date.now() / 600000); // scenario shifts every 10 minutes
+      const mk = (id, cat, kind, road, pts, magnitude, delay, description, extra) => ({ id: 'sim_tr_' + id + t, cat, kind, magnitude, severity: ['Unknown', 'Minor', 'Moderate', 'Major', 'Road closed'][magnitude], description, from: road, to: '', road, delay, length: 2400, lat: pts[Math.floor(pts.length / 2)][1], lon: pts[Math.floor(pts.length / 2)][0], line: pts, simulated: true, ...extra });
+      const R = ROADS;
+      const inc = [
+        mk('acc', 1, 'Accident', 'Mombasa Road', [R['Mombasa Road'][2]], 0, 0, 'Accident involving a lorry and two cars near the Cabanas interchange'),
+        mk('fl', 11, 'Flooding', 'Jogoo Road', [R['Jogoo Road'][1]], 0, 0, 'Flooded carriageway after heavy rain; impassable for small cars'),
+        mk('rw', 9, 'Road works', 'Waiyaki Way', [R['Waiyaki Way'][2]], 0, 0, 'Lane closures for road works near Westlands'),
+        mk('bd', 14, 'Broken-down vehicle', 'Thika Road', [R['Thika Road'][2]], 0, 0, 'Broken-down bus blocking the left lane near Roysambu')
+      ];
+      const jams = [
+        mk('j1', 6, 'Traffic jam', 'Mombasa Road', R['Mombasa Road'].slice(0, 3), 3, 1500, 'Stationary traffic', { heavy: true, cause: { source: 'traffic', label: 'Accident', detail: 'Accident involving a lorry and two cars near the Cabanas interchange (0.3 km away)' } }),
+        mk('j2', 6, 'Traffic jam', 'Jogoo Road', R['Jogoo Road'], 3, 1100, 'Queuing traffic', { heavy: true, cause: { source: 'traffic', label: 'Flooding', detail: 'Flooded carriageway after heavy rain (0.1 km away)' } }),
+        mk('j3', 6, 'Traffic jam', 'Waiyaki Way', R['Waiyaki Way'].slice(1), 2, 480, 'Slow traffic', { heavy: false, cause: { source: 'traffic', label: 'Road works', detail: 'Lane closures for road works near Westlands' } }),
+        mk('j4', 6, 'Traffic jam', 'Thika Road', R['Thika Road'].slice(1, 4), t % 2 ? 3 : 2, t % 2 ? 900 : 360, 'Slow traffic', { heavy: !!(t % 2), cause: { source: 'traffic', label: 'Broken-down vehicle', detail: 'Broken-down bus blocking the left lane near Roysambu' } }),
+        mk('j5', 6, 'Traffic jam', 'Uhuru Highway', R['Uhuru Highway'], 2, 300, 'Slow traffic', { heavy: false, cause: { source: 'news', label: 'Possible: Protest / unrest', detail: 'Protesters march through central Nairobi over rising living costs' } })
+      ];
+      const flow = Object.entries(ROADS).map(([road, line]) => ({ road, line, speed: jams.find(j => j.road === road) ? (jams.find(j => j.road === road).magnitude >= 3 ? 0.15 : 0.45) : 0.85 }));
+      return { configured: true, simulated: true, incidents: inc.concat(jams), jams, flow, updated: Date.now() };
+    }
+
+    return { post, burst, backfill, events, incidents, transmission, flights, atc, traffic };
   }
 
   return { create, PLATFORMS: Object.keys(PLATFORMS) };

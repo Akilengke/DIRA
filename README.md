@@ -68,6 +68,30 @@ Respect each platform's terms of service and local privacy law when monitoring.
   and PIN. It is limited to your licensed bands, never transmits on aviation or beacon frequencies, always releases PTT, and every over is logged.
   Never send a false distress call. Listening to police and emergency-service radio is restricted in some countries.
 
+## Operator sign-in & connected accounts
+
+- **First run** prints a one-time setup code in the server log. Open the site → **Sign in** → enter the code and choose
+  the operator password. After that, every change (rules, watch terms, accounts, intercom) needs the operator session.
+- **Accounts tab**: sign in to X, Reddit, Mastodon, Bluesky, YouTube, Facebook/Instagram and LinkedIn on each platform's
+  own login page (OAuth; Bluesky uses an app password). Scavenge stores read-only tokens encrypted (AES-256-GCM,
+  key from `SCAVENGE_SECRET` or `data/.vault-key`) and its connectors monitor through them, refreshing tokens as needed.
+- OAuth platforms need your own developer app; the Accounts tab shows the exact callback URL to register and takes the
+  client ID and secret. Mastodon registers itself with your instance automatically.
+
+## Situational layers
+
+- **Incidents from news**: explosions, shootings, strikes, fires, floods, protests, crashes, kidnappings, outbreaks… are
+  detected in news and posts and shown as icons at the city or country they mention (a dedicated GDELT sweep feeds this).
+- **Conflict zones**: a reference list of active conflicts (mid-2026) with live intensity from news reports; links to
+  ACLED and CrisisWatch for verification.
+- **Weather radar**: live and forecast precipitation radar frames (RainViewer), animated.
+- **Flights**: live ADS-B in the view; when zoomed out, a world snapshot from OpenSky (live with free credentials).
+- **Traffic & road incidents**: live congestion overlay, accidents, closures, road works, broken-down vehicles and
+  flooded roads (TomTom Traffic, free key in the Accounts tab or `TOMTOM_API_KEY`). Heavy jams get a cause: the
+  nearest reported road incident, otherwise a matching local news incident (crash, flood, protest…), shown as a
+  callout on the map and a notification. Each alert links to Google Maps' traffic view (Google's own traffic layer
+  can't be embedded outside Google Maps). Shown at city zoom; flooded areas from news are shaded blue.
+
 ## Flights
 
 - **Live aircraft** on the map from community ADS-B networks (adsb.lol → airplanes.live → adsb.fi, all free), loaded
@@ -100,7 +124,7 @@ provider's usage policy for heavy traffic.
 /api/brief?country= · /api/events?layers=quake,nature,news,weather · /api/rules · /api/alerts · /api/watch ·
 /api/sources · /api/satellite?date=YYYY-MM-DD · /api/stream (SSE) · /api/emergency · /api/radio/log ·
 /api/radio/stations?country=&q= · /api/radio/kiwi?lat=&lon=&hz= · /api/sdr/status · /api/sdr/audio · /api/intercom · /api/tx/status ·
-/api/flights?lamin=&lomin=&lamax=&lomax= · /api/flights/find?q= · /api/flights/route?callsign= · /api/airports/near?lat=&lon=`
+/api/flights?lamin=&lomin=&lamax=&lomax= · /api/traffic/incidents?lamin=&lomin=&lamax=&lomax= · /api/traffic/flow/{style}/{z}/{x}/{y}.png · /api/flights/find?q= · /api/flights/route?callsign= · /api/airports/near?lat=&lon=`
 `POST /api/rules {name, terms[], platforms[], country, mood, match, delivery{inapp,browser,sound,webhook,ntfy}} ·
 POST /api/watch {terms[]} · DELETE /api/rules?id= · POST /api/sdr/tune {freqs[], mode, squelch} ·
 POST /api/sdr/stop · POST /api/intercom (JSON text or raw audio) · POST /api/tx (raw audio; X-Freq, X-Operator-Pin)`

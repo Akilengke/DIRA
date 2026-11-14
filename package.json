@@ -9,7 +9,7 @@
     "start": "node server/index.js",
     "build": "node -e \"console.log('Scavenge has no build step')\"",
     "demo": "SCAVENGE_DEMO=1 node server/index.js",
-    "test": "node test/radio.js && node test/smoke.js"
+    "test": "node test/radio.js && node test/accounts.js && node test/smoke.js"
   },
   "dependencies": {}
 }

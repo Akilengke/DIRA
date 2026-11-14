@@ -58,8 +58,13 @@ async function inBox({ lamin, lomin, lamax, lomax }) {
   for (let la = Math.floor(lamin / STEP) * STEP + STEP / 2; la < lamax + STEP / 2; la += STEP) rows.push(+la.toFixed(2));
   for (let lo = Math.floor(lomin / lonStep) * lonStep + lonStep / 2; lo < lomax + lonStep / 2; lo += lonStep) cols.push(+(((lo + 540) % 360) - 180).toFixed(2));
   if (rows.length * cols.length > MAX_TILES) {
-    if (opensky.enabled()) { const all = await opensky.all(); return { aircraft: all.list.filter(a => a.lat >= lamin && a.lat <= lamax && a.lon >= lomin && a.lon <= lomax), source: 'OpenSky Network', partial: false, tooWide: false, at: all.at }; }
-    return { aircraft: [], tooWide: true, source: null, partial: false };
+    // Zoomed out: show a world snapshot from OpenSky (live with credentials, every ~15 min anonymously).
+    try {
+      const all = await opensky.all();
+      let list = all.list.filter(a => a.lat >= lamin && a.lat <= lamax && a.lon >= lomin && a.lon <= lomax);
+      if (list.length > 3000) { const step = list.length / 3000; list = Array.from({ length: 3000 }, (_, i) => list[Math.floor(i * step)]); }
+      return { aircraft: list, source: opensky.enabled() ? 'OpenSky Network' : 'OpenSky Network (snapshot)', snapshot: !opensky.enabled(), partial: false, tooWide: false, at: all.at, total: all.list.length };
+    } catch (e) { return { aircraft: [], tooWide: true, source: null, partial: false, note: 'World view unavailable: ' + e.message }; }
   }
   const keys = rows.flatMap(la => cols.map(lo => `${la},${lo}`));
   keys.forEach(want);
@@ -116,11 +121,13 @@ const opensky = (() => {
     token = { v: j.access_token, exp: Date.now() + (j.expires_in - 60) * 1000 }; return token.v;
   }
   async function all() {
-    if (Date.now() - cache.at < (+process.env.OPENSKY_POLL_SEC || 90) * 1000) return cache;
+    const every = enabled() ? (+process.env.OPENSKY_POLL_SEC || 90) : (+process.env.OPENSKY_ANON_SEC || 900); // anonymous access allows ~100 world fetches a day
+    if (cache.list.length && Date.now() - cache.at < every * 1000) return cache;
+    if (!cache.list.length && cache.failedAt && Date.now() - cache.failedAt < 120000) throw new Error(cache.error);
     if (inflight) return inflight;
     inflight = (async () => {
       try {
-        const j = await getJSON('https://opensky-network.org/api/states/all', { headers: { Authorization: 'Bearer ' + await auth() }, timeout: 30000 });
+        const j = await getJSON('https://opensky-network.org/api/states/all', { headers: enabled() ? { Authorization: 'Bearer ' + await auth() } : {}, timeout: 30000 }).catch(e => { cache.failedAt = Date.now(); cache.error = e.message; throw e; });
         cache = { at: Date.now(), list: (j.states || []).filter(s => s[5] != null).map(s => ({ hex: s[0], flight: (s[1] || '').trim() || null, country: s[2], lon: s[5], lat: s[6],
           alt: s[8] ? 0 : s[7] != null ? Math.round(s[7] * 3.28084) : null, ground: !!s[8], gs: s[9] != null ? Math.round(s[9] * 1.94384) : null, track: s[10], vr: s[11] != null ? Math.round(s[11] * 196.85) : null,
           squawk: s[14], seen: Math.max(0, Math.round(j.time - (s[4] || j.time))), source: 'OpenSky Network' })) };

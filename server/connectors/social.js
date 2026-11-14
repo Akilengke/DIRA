@@ -136,4 +136,94 @@ const youtube = {
   }
 };
 
-module.exports = [x, facebook, linkedin, reddit, mastodon, bluesky, hackernews, youtube, news];
+// ---- Connected accounts --------------------------------------------------------------------
+// When the operator has connected an account for a platform (Accounts page), the connector monitors through
+// that account's token instead of anonymous or .env access. Tokens arrive already refreshed and decrypted.
+let ACC = null;
+const auth = t => ({ Authorization: 'Bearer ' + t });
+const mapMasto = s => ({ id: 'ma_' + s.id, platform: 'mastodon', author: '@' + s.account?.acct, text: stripHtml(s.content).slice(0, 600), url: s.url, ts: Date.parse(s.created_at), lang: s.language, metrics: { boosts: s.reblogs_count, likes: s.favourites_count } });
+const mapBsky = p => ({ id: 'bs_' + p.cid, platform: 'bluesky', author: '@' + p.author?.handle, text: p.record?.text || '', url: `https://bsky.app/profile/${p.author?.handle}/post/${p.uri.split('/').pop()}`, ts: Date.parse(p.record?.createdAt || p.indexedAt), lang: (p.record?.langs || [])[0], metrics: { likes: p.likeCount, reposts: p.repostCount } });
+const mapReddit = ({ data: d }) => ({ id: 'rd_' + d.id, platform: 'reddit', author: 'u/' + d.author, text: [d.title, d.selftext].filter(Boolean).join(' — ').slice(0, 600), url: 'https://www.reddit.com' + d.permalink, ts: d.created_utc * 1000, channel: 'r/' + d.subreddit, metrics: { score: d.score, comments: d.num_comments } });
+const settled = async ps => (await Promise.allSettled(ps)).flatMap(r => r.status === 'fulfilled' ? r.value : []);
+const tagsOf = terms => terms.map(t => t.replace(/^#/, '')).filter(t => /^\w+$/.test(t)).slice(0, 4);
+
+const viaAccount = {
+  async x(terms, c) {
+    const q = (terms.length ? '(' + terms.slice(0, 10).map(t => t.includes(' ') ? `"${t}"` : t).join(' OR ') + ')' : 'news') + ' -is:retweet';
+    const j = await getJSON(`https://api.x.com/2/tweets/search/recent?query=${encodeURIComponent(q)}&max_results=50&tweet.fields=created_at,lang,public_metrics&expansions=author_id&user.fields=username`, { headers: auth(c.token) });
+    const users = Object.fromEntries((j.includes?.users || []).map(u => [u.id, u.username]));
+    return (j.data || []).map(t => ({ id: 'x_' + t.id, platform: 'x', author: '@' + (users[t.author_id] || t.author_id), text: t.text, url: `https://x.com/i/status/${t.id}`, ts: Date.parse(t.created_at), lang: t.lang, metrics: t.public_metrics }));
+  },
+  async reddit(terms, c) {
+    const q = terms.map(t => `"${t}"`).join(' OR ');
+    const url = q ? `https://oauth.reddit.com/search?q=${encodeURIComponent(q)}&sort=new&limit=75&t=day&raw_json=1` : 'https://oauth.reddit.com/best?limit=75&raw_json=1';
+    const j = await getJSON(url, { headers: auth(c.token) });
+    return (j.data?.children || []).map(mapReddit);
+  },
+  async mastodon(terms, c) {
+    const h = `https://${c.instance}`, H = { headers: auth(c.token) };
+    const reqs = [getJSON(`${h}/api/v1/timelines/home?limit=40`, H)];
+    tagsOf(terms).forEach(t => reqs.push(getJSON(`${h}/api/v1/timelines/tag/${encodeURIComponent(t)}?limit=30`, H)));
+    terms.filter(t => !/^#/.test(t)).slice(0, 3).forEach(t => reqs.push(getJSON(`${h}/api/v2/search?q=${encodeURIComponent(t)}&type=statuses&limit=20`, H).then(j => j.statuses || [])));
+    return (await settled(reqs)).map(mapMasto).filter(p => p.text);
+  },
+  async bluesky(terms, c) {
+    const base = 'https://bsky.social/xrpc/';
+    const reqs = terms.length ? terms.slice(0, 5).map(q => getJSON(`${base}app.bsky.feed.searchPosts?q=${encodeURIComponent(q)}&limit=25&sort=latest`, { headers: auth(c.token) }).then(j => j.posts || []))
+      : [getJSON(`${base}app.bsky.feed.getTimeline?limit=50`, { headers: auth(c.token) }).then(j => (j.feed || []).map(f => f.post))];
+    return (await settled(reqs)).map(mapBsky);
+  },
+  async youtube(terms, c) {
+    const q = terms.length ? terms.slice(0, 4).join('|') : 'news';
+    const j = await getJSON(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&order=date&maxResults=25&q=${encodeURIComponent(q)}`, { headers: auth(c.token) });
+    return (j.items || []).map(v => ({ id: 'yt_' + v.id.videoId, platform: 'youtube', author: v.snippet.channelTitle, text: `${v.snippet.title} — ${v.snippet.description}`.slice(0, 600), url: `https://www.youtube.com/watch?v=${v.id.videoId}`, ts: Date.parse(v.snippet.publishedAt) }));
+  },
+  async facebook(terms, c) {
+    const G = 'https://graph.facebook.com/v21.0/';
+    const pages = (await getJSON(`${G}me/accounts?fields=id,name,access_token,instagram_business_account&limit=25&access_token=${c.token}`)).data || [];
+    const want = terms.map(t => t.toLowerCase().replace(/^#/, ''));
+    const fb = await settled(pages.map(pg => getJSON(`${G}${pg.id}/posts?fields=id,message,created_time,permalink_url&limit=25&access_token=${pg.access_token}`).then(j => (j.data || []).filter(x => x.message).map(x => ({
+      id: 'fb_' + x.id, platform: 'facebook', author: pg.name, text: x.message.slice(0, 600), url: x.permalink_url, ts: Date.parse(x.created_time) })))));
+    const ig = pages.find(pg => pg.instagram_business_account);
+    let insta = [];
+    if (ig) {
+      const uid = ig.instagram_business_account.id;
+      insta = await settled(tagsOf(terms).slice(0, 3).map(async tag => {
+        const h = await getJSON(`${G}ig_hashtag_search?user_id=${uid}&q=${encodeURIComponent(tag)}&access_token=${c.token}`);
+        const hid = h.data && h.data[0] && h.data[0].id; if (!hid) return [];
+        const m = await getJSON(`${G}${hid}/recent_media?user_id=${uid}&fields=id,caption,permalink,timestamp&limit=25&access_token=${c.token}`);
+        return (m.data || []).filter(x => x.caption).map(x => ({ id: 'ig_' + x.id, platform: 'facebook', channel: 'Instagram #' + tag, author: 'Instagram', text: x.caption.slice(0, 600), url: x.permalink, ts: Date.parse(x.timestamp) }));
+      }));
+    }
+    return [...fb.filter(p => !want.length || want.some(t => p.text.toLowerCase().includes(t))), ...insta];
+  },
+  async linkedin(terms, c) {
+    const H = { headers: Object.assign(auth(c.token), { 'LinkedIn-Version': '202410', 'X-Restli-Protocol-Version': '2.0.0' }) };
+    const acl = await getJSON('https://api.linkedin.com/rest/organizationAcls?q=roleAssignee&role=ADMINISTRATOR&state=APPROVED', H);
+    const orgs = (acl.elements || []).map(e => e.organization).filter(Boolean).slice(0, 10);
+    const want = terms.map(t => t.toLowerCase());
+    const posts = await settled(orgs.map(o => getJSON(`https://api.linkedin.com/rest/posts?author=${encodeURIComponent(o)}&q=author&count=20`, H).then(j => j.elements || [])));
+    return posts.filter(p => p.commentary && (!want.length || want.some(t => p.commentary.toLowerCase().includes(t))))
+      .map(p => ({ id: 'li_' + p.id, platform: 'linkedin', author: p.author, text: p.commentary.slice(0, 600), url: `https://www.linkedin.com/feed/update/${p.id}`, ts: p.publishedAt || p.createdAt }));
+  }
+};
+
+const ALL = [x, facebook, linkedin, reddit, mastodon, bluesky, hackernews, youtube, news];
+for (const c of ALL) {
+  if (!viaAccount[c.id]) continue;
+  const anon = c.search.bind(c), anonEnabled = c.enabled;
+  c.enabled = () => anonEnabled() || !!(ACC && ACC.hasAny(c.id));
+  c.search = async terms => {
+    if (ACC && ACC.hasAny(c.id)) {
+      const creds = await ACC.forPlatform(c.id), out = []; let err = null;
+      for (const cr of creds) { try { out.push(...await viaAccount[c.id](terms, cr)); } catch (e) { cr.fail(e); err = err || e; } }
+      c.via = creds.length ? `${creds.length} connected account${creds.length > 1 ? 's' : ''}` : null;
+      if (out.length || !anonEnabled()) { if (!out.length && err) throw err; return out; }
+    }
+    c.via = null;
+    return anon(terms);
+  };
+}
+
+module.exports = ALL;
+module.exports.setAccounts = a => { ACC = a; };

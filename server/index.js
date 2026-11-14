@@ -13,10 +13,18 @@ const earth = require('./connectors/earth');
 const social = require('./connectors/social');
 const radioDir = require('./connectors/radio');
 const flights = require('./connectors/flights');
+const situational = require('./connectors/situational');
 const demoSim = process.env.SCAVENGE_DEMO === '1' ? require('../public/js/sim').create(core) : null;
 const radioRef = require('../public/js/radio');
 const { createSDR } = require('./engine/sdr');
 const { createTX, createIntercom } = require('./engine/tx');
+const { createAuth } = require('./engine/auth');
+const { createAccounts } = require('./engine/accounts');
+const auth = createAuth(DATA);
+const accounts = createAccounts({ dataDir: DATA, auth });
+social.setAccounts(accounts);
+const { createTraffic } = require('./connectors/traffic');
+const traffic = createTraffic({ key: () => accounts.key('tomtom'), posts: () => state.posts.slice(-4000) });
 
 const PORT = +process.env.PORT || 8080;
 const PUBLIC = path.join(__dirname, '../public');
@@ -35,8 +43,9 @@ const intercom = createIntercom({ dataDir: DATA, broadcast: (t, d) => broadcast(
 const readRaw = (req, max) => new Promise((ok, bad) => { const parts = []; let n = 0; req.on('data', c => { n += c.length; if (n > max) { bad(Object.assign(new Error('Upload too large.'), { code: 413 })); req.destroy(); } else parts.push(c); }); req.on('end', () => ok(Buffer.concat(parts))); req.on('error', bad); });
 
 // ------------------------------------------------------------------ helpers
+const sameOrigin = req => { try { return new URL(req.headers.origin).host === (req.headers['x-forwarded-host'] || req.headers.host); } catch { return false; } };
 const send = (res, code, body, type = 'application/json') => {
-  res.writeHead(code, { 'Content-Type': type, 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': process.env.CORS_ORIGIN || '*' });
+  res.writeHead(code, Object.assign({ 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }, process.env.CORS_ORIGIN ? { 'Access-Control-Allow-Origin': process.env.CORS_ORIGIN } : {}));
   res.end(type === 'application/json' ? JSON.stringify(body) : body);
 };
 const readBody = req => new Promise((ok, bad) => { let b = ''; req.on('data', c => { b += c; if (b.length > 1e6) req.destroy(); }); req.on('end', () => { try { ok(b ? JSON.parse(b) : {}); } catch (e) { bad(e); } }); });
@@ -55,6 +64,15 @@ const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.
 
 // ------------------------------------------------------------------ routes
 const routes = {
+  // ---- operator sign-in & connected accounts
+  'GET /api/auth/status': (q, req) => auth.status(req),
+  'POST /api/auth/setup': async (q, req, res) => auth.setup(await readBody(req), req, res),
+  'POST /api/auth/login': async (q, req, res) => auth.login(await readBody(req), req, res),
+  'POST /api/auth/logout': (q, req, res) => auth.logout(req, res),
+  'GET /api/accounts': (q, req) => { const l = accounts.list(req); return auth.isOperator(req) ? l : { platforms: l.platforms.map(p => Object.assign(p, { appClientId: null, redirect: null })), accounts: l.accounts.map(a => ({ platform: a.platform, handle: a.handle, status: a.status })), callbackBase: null, keys: { tomtom: { configured: l.keys.tomtom.configured } } }; },
+  'POST /api/accounts/connect': async (q, req) => { const b = await readBody(req); return accounts.start(b.platform, b, req); },
+  'POST /api/accounts/app': async (q, req) => { const b = await readBody(req); return b.clear ? accounts.clearApp(b.platform) : accounts.setApp(b.platform, b); },
+  'DELETE /api/accounts': q => accounts.remove(q.get('id')),
   'GET /api/health': () => ({ ok: true, mode: process.env.SCAVENGE_DEMO === '1' ? 'demo' : 'live', posts: state.posts.length, uptime: process.uptime() }),
   'GET /api/sources': () => ({ connectors: social.map(c => ({ id: c.id, label: c.label, free: c.free, enabled: c.enabled(), needs: c.needs || null, status: state.sources[c.id] || null })), earth: Object.values(state.sources).filter(s => /^(earth|emg)_/.test(s.id)) }),
   'GET /api/feed': q => { const p = scoped(q); const lim = Math.min(+q.get('limit') || 200, 2000); return p.slice(-lim).reverse(); },
@@ -87,6 +105,9 @@ const routes = {
   },
   'GET /api/flights/find': q => demoSim ? demoSim.flights().filter(f => [f.flight, f.reg, f.hex].some(x => x && x.toUpperCase() === String(q.get('q') || '').trim().toUpperCase())) : flights.find(q.get('q')),
   'GET /api/flights/route': q => demoSim ? (() => { const f = demoSim.flights().find(x => x.flight === q.get('callsign')); const A = radioRef.AIRPORTS; return f ? { codes: f.from + '-' + f.to, plausible: true, airports: [A.find(a => a.icao === f.from), A.find(a => a.icao === f.to)] } : null; })() : flights.route(q.get('callsign'), q.get('lat'), q.get('lon')),
+  'GET /api/traffic/incidents': q => demoSim ? demoSim.traffic() : traffic.incidents(Object.fromEntries(['lamin', 'lomin', 'lamax', 'lomax'].map(k => [k, q.get(k)]))),
+  'GET /api/conflicts': () => situational.conflicts(),
+  'GET /api/weather/radar': () => situational.radar(),
   'GET /api/airports/near': q => flights.nearAirports(DATA, q.get('lat'), q.get('lon'), q.get('n')),
   'GET /api/sdr/status': () => sdr.status(),
   'POST /api/sdr/tune': async (q, req) => { const b = await readBody(req); return sdr.start({ freqs: b.freqs || [b.hz], mode: b.mode, squelch: b.squelch, gain: b.gain }); },
@@ -124,6 +145,14 @@ async function handle(req, res) {
     clients.add(res); req.on('close', () => clients.delete(res));
     return;
   }
+  if (u.pathname.startsWith('/api/oauth/callback/')) {
+    const platform = path.basename(u.pathname);
+    if (!auth.isOperator(req)) { res.writeHead(302, { Location: '/?account_error=' + encodeURIComponent('Sign in as the operator before connecting accounts.') + '#accounts' }); return res.end(); }
+    try { const a = await accounts.callback(platform, u.searchParams); res.writeHead(302, { Location: `/?connected=${encodeURIComponent(platform)}&handle=${encodeURIComponent(a.handle || '')}#accounts` }); }
+    catch (e) { res.writeHead(302, { Location: '/?account_error=' + encodeURIComponent(e.message.slice(0, 200)) + '#accounts' }); }
+    return res.end();
+  }
+  { const m = /^\/api\/traffic\/flow\/([\w-]+)\/(\d+)\/(\d+)\/(\d+)\.png$/.exec(u.pathname); if (m) return traffic.tile(m[1], +m[2], +m[3], +m[4], res); }
   if (u.pathname === '/api/sdr/audio') return sdr.listen(req, res);
   if (u.pathname.startsWith('/api/radio/clip/')) return sdr.clip(path.basename(u.pathname, '.wav'), res);
   if (u.pathname.startsWith('/api/intercom/audio/')) return intercom.audio(path.basename(u.pathname), res);
@@ -134,8 +163,11 @@ async function handle(req, res) {
   }
   const route = routes[`${req.method} ${u.pathname}`];
   if (route) {
-    if (TOKEN && req.method !== 'GET' && req.headers.authorization !== 'Bearer ' + TOKEN) return send(res, 401, { error: 'Missing or wrong access token.' });
-    try { return send(res, 200, await route(u.searchParams, req)); }
+    const open = /^\/api\/auth\//.test(u.pathname);
+    const needsOperator = !open && req.method !== 'GET' && (auth.isSetup() || /^\/api\/accounts/.test(u.pathname) || TOKEN);
+    if (needsOperator && !auth.isOperator(req)) return send(res, 401, { error: auth.isSetup() ? 'Sign in as the operator to make changes.' : 'Set up the operator sign-in first (Sign in → setup code from the server log).' });
+    if (req.method !== 'GET' && !open && req.headers.origin && !sameOrigin(req)) return send(res, 403, { error: 'Cross-site request refused.' });
+    try { return send(res, 200, await route(u.searchParams, req, res)); }
     catch (e) { return send(res, e.code || 500, { error: e.message }); }
   }
   if (u.pathname.startsWith('/api/')) return send(res, 404, { error: 'Unknown endpoint ' + u.pathname });

@@ -79,15 +79,25 @@ function onTransmission(tx) {
   if (tx.text && !tx.aviation) ingest([{ id: 'radio_' + tx.id, platform: 'radio', author: tx.channel, channel: tx.channel, text: tx.text, ts: tx.ts, lat: tx.lat, lon: tx.lon, url: tx.clip, simulated: tx.simulated }]);
 }
 
+// Breaking-incident sweep: world news for explosions, shootings, fires, floods, protests, crashes… (alternating queries).
+const INCIDENT_QUERIES = [['explosion', 'blast', 'shooting', 'gunman', 'stabbing', 'kidnapped'], ['fire', 'flood', 'protest', 'crash', 'earthquake', 'collapse']];
+let incCycle = 0;
+async function pollIncidents() {
+  const news = social.find(c => c.id === 'news'); if (!news) return;
+  try { const raw = await news.search(INCIDENT_QUERIES[incCycle++ % 2]); const n = ingest(raw); setStatus('incidents', 'Incident news sweep (GDELT)', true, `${raw.length} reports, ${n} new`); }
+  catch (e) { setStatus('incidents', 'Incident news sweep (GDELT)', false, e.message); }
+}
+
 async function pollSocial() {
   if (process.env.SCAVENGE_DEMO === '1') return;
+  pollIncidents();
   const terms = watchTerms();
   for (const c of social) {
     if (!c.enabled()) { setStatus(c.id, c.label, null, 'Not configured — needs ' + (c.needs || 'credentials')); continue; }
     try {
       const raw = await c.search(terms);
       const n = ingest(raw);
-      setStatus(c.id, c.label, true, `${raw.length} fetched, ${n} new`);
+      setStatus(c.id, c.label, true, `${raw.length} fetched, ${n} new${c.via ? ' · via ' + c.via : ''}`);
     } catch (e) { setStatus(c.id, c.label, false, e.message); }
   }
 }

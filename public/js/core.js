@@ -159,6 +159,34 @@
     return null;
   }
 
+  /** Incident type of a news report or post, for the map's incident icons. First match wins (most specific first). */
+  const INCIDENTS = [
+    ['strike', 'Air / missile strike', /\b(air ?strikes?|drone strikes?|missile (strike|attack)s?|shelling|rocket (fire|attack)s?|bombardment)\b/],
+    ['explosion', 'Explosion', /\b(explosions?|blasts?|bomb(s|ing|ings|ed)?|explosives?|ied|grenades?|detonat\w*|car bomb)\b/],
+    ['shooting', 'Shooting', /\b(shootings?|shot dead|gunm[ae]n|gunfire|opened fire|mass shooting|shot and killed|sniper)\b/],
+    ['stabbing', 'Stabbing', /\b(stabbings?|stabbed|knife attack|machete attack)\b/],
+    ['kidnap', 'Kidnapping', /\b(kidnap\w*|abduct\w*|hostages?)\b/],
+    ['attack', 'Attack', /\b(terror\w*|suicide attack|militants? (stormed|attacked)|massacre|ambush(ed)?|attack on (a |the )?(village|market|church|mosque|school|convoy))\b/],
+    ['fire', 'Fire', /\b(wildfires?|bushfires?|blaze|inferno|arson|fire (guts|destroys|broke out|razes)|(house|market|building|factory|forest) fire|burn(ed|t|ing) down|on fire)\b/],
+    ['crash-air', 'Air crash', /\b(plane|aircraft|helicopter|jet|flight) (crash\w*|went down)|crash(ed)? (landing|near the airport)\b/],
+    ['crash', 'Road / rail crash', /\b(crash\w*|collision|collided|derail\w*|road accident|accident on the|overturned|pile-?up)\b/],
+    ['flood', 'Flood', /\b(flood\w*|flash floods?|landslides?|mudslides?|deluge|burst (its )?banks)\b/],
+    ['quake', 'Earthquake', /\b(earthquakes?|quakes?|tremors?|seismic)\b/],
+    ['storm', 'Storm', /\b(storms?|cyclones?|hurricanes?|typhoons?|tornado(es)?|lightning)\b/],
+    ['protest', 'Protest / unrest', /\b(protests?|protesters?|demonstrat(ion|ions|ors)|riots?|rioters|unrest|tear ?gas|march(ed|ers) (on|through|to))\b/],
+    ['outbreak', 'Disease outbreak', /\b(outbreaks?|cholera|ebola|mpox|marburg|epidemic|measles)\b/],
+    ['collapse', 'Collapse', /\b(building collapse|collapsed building|bridge collapse|collapsed)\b/]
+  ];
+  const NOT_FIRE = /\b(cease ?fire|opened fire|fired (from|by|at|over)|under fire|fire(d)? (the|his|her|its) (coach|manager|ceo|staff))\b/;
+  function incident(text) {
+    const t = (text || '').toLowerCase();
+    for (const [type, label, re] of INCIDENTS) {
+      if (type === 'fire' && NOT_FIRE.test(t) && !/\b(wildfire|blaze|inferno|arson)\b/.test(t)) continue;
+      if (re.test(t)) return { type, label };
+    }
+    return null;
+  }
+
   /** Volume, tone and momentum per category. */
   function topicBreakdown(posts, opts) {
     opts = opts || {}; const now = opts.now || Date.now(), win = (opts.windowMin || 30) * 60000;
@@ -171,7 +199,7 @@
   function enrich(post) {
     const s = sentiment(post.text);
     const g = geotag(post.text, post.lang, post.lat != null ? { lat: post.lat, lon: post.lon, country: post.country, city: post.city, geoSource: 'native' } : null);
-    return Object.assign({}, post, g, { sentiment: s.score, mood: s.label, terms: terms(post.text), topics: classify(post.text) });
+    return Object.assign({}, post, g, { sentiment: s.score, mood: s.label, terms: terms(post.text), topics: classify(post.text), incident: incident(post.text) });
   }
 
   // ---------------------------------------------------------------- trends
@@ -289,5 +317,5 @@
     return lines.join(' ');
   }
 
-  return { CATEGORIES, classify, distress, topicBreakdown, CITIES, COUNTRIES, geotag, sentiment, tokenize, terms, enrich, trends, breakdown, timeline, matchRule, brief };
+  return { CATEGORIES, classify, distress, incident, INCIDENTS, topicBreakdown, CITIES, COUNTRIES, geotag, sentiment, tokenize, terms, enrich, trends, breakdown, timeline, matchRule, brief };
 });
